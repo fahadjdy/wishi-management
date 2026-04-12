@@ -36,7 +36,8 @@ class WishiResource extends JsonResource
             'tender_end_time' => $this->tender_end_time,
             'members_count' => $this->whenCounted('members'),
             'active_members_count' => $this->whenCounted('activeMembers'),
-            'pending_members_count' => $this->members()->where('status', 'pending')->count(),
+            // Pending-approval count is admin-only signal (drives the "ready to start" UI admins own).
+            'pending_members_count' => $this->when($isAdmin, fn () => $this->members()->where('status', 'pending')->count()),
             'seats_remaining' => max(0, (int) $this->total_members - $this->activeMembers()->count()),
             'is_full' => (int) $this->total_members <= $this->activeMembers()->count(),
             'can_start' => $this->status === 'draft' && (int) $this->total_members <= $this->activeMembers()->count(),
@@ -45,10 +46,11 @@ class WishiResource extends JsonResource
             'tender_cycles_count' => $this->computeTenderCount(),
             'auto_cycles_count' => $this->computeAutoCount(),
             'active_tender_cycle' => $this->activeTenderSnapshot(),
-            'total_surplus' => (float) $this->cycles()->sum('surplus'),
-            'unhandled_surplus' => (float) $this->cycles()->whereNotNull('surplus')->where('surplus', '>', 0)->whereNull('surplus_action')->sum('surplus'),
-            'deferred_pending_total' => (float) $this->cycles()->where('deferred_amount', '>', 0)->whereNull('deferred_released_at')->sum('deferred_amount'),
-            'deferred_released_total' => (float) $this->cycles()->where('deferred_amount', '>', 0)->whereNotNull('deferred_released_at')->sum('deferred_amount'),
+            // Financial aggregates (surplus, deferred pool, topups) are admin-only.
+            'total_surplus' => $this->when($isAdmin, fn () => (float) $this->cycles()->sum('surplus')),
+            'unhandled_surplus' => $this->when($isAdmin, fn () => (float) $this->cycles()->whereNotNull('surplus')->where('surplus', '>', 0)->whereNull('surplus_action')->sum('surplus')),
+            'deferred_pending_total' => $this->when($isAdmin, fn () => (float) $this->cycles()->where('deferred_amount', '>', 0)->whereNull('deferred_released_at')->sum('deferred_amount')),
+            'deferred_released_total' => $this->when($isAdmin, fn () => (float) $this->cycles()->where('deferred_amount', '>', 0)->whereNotNull('deferred_released_at')->sum('deferred_amount')),
             'creator' => new UserSummaryResource($this->whenLoaded('creator')),
             'created_at' => optional($this->created_at)?->toIso8601String(),
         ];

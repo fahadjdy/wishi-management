@@ -20,22 +20,41 @@ class ContributionController extends Controller
     {
         $this->scope($wishi, $cycle);
         $this->authorize('view', $cycle);
-        $contributions = $cycle->contributions()->with('user')->get();
-        return response()->json(['data' => ContributionResource::collection($contributions)]);
+
+        $viewer = $request->user();
+        $isAdmin = (int) $wishi->created_by === (int) $viewer->id;
+
+        // Privacy: non-admin members see only their own contribution row. They do NOT
+        // see who else has/hasn't paid — that's admin-only information.
+        $query = $cycle->contributions()->with('user');
+        if (! $isAdmin) {
+            $query->where('user_id', $viewer->id);
+        }
+        $contributions = $query->get();
+
+        return response()->json([
+            'data' => ContributionResource::collection($contributions),
+            'meta' => [
+                'restricted' => ! $isAdmin,
+                'paid_count' => $isAdmin ? $cycle->contributions()->whereNotNull('paid_at')->count() : null,
+                'total_count' => $isAdmin ? $cycle->contributions()->count() : null,
+            ],
+        ]);
     }
 
     public function store(RecordContributionRequest $request, Wishi $wishi, Cycle $cycle): JsonResponse
     {
         $this->scope($wishi, $cycle);
-        $userId = (int) ($request->input('user_id') ?? $request->user()->id);
 
+        // Only the WISHI admin can record any payment. Members cannot self-report payment —
+        // this keeps the audit trail authoritative and prevents fraud.
+        $isAdmin = (int) $wishi->created_by === (int) $request->user()->id;
+        abort_unless($isAdmin, 403, 'Only the WISHI admin can record contribution payments.');
+
+        $userId = (int) ($request->input('user_id') ?? $request->user()->id);
         $contribution = Contribution::where('cycle_id', $cycle->id)
             ->where('user_id', $userId)
             ->firstOrFail();
-
-        $isAdmin = (int) $wishi->created_by === (int) $request->user()->id;
-        $isOwn = (int) $contribution->user_id === (int) $request->user()->id;
-        abort_unless($isAdmin || $isOwn, 403, 'You cannot record this payment.');
 
         $updated = $this->service->recordPayment($contribution, $request->user(), $request->validated());
         $updated->load('user');

@@ -375,31 +375,31 @@ const eligibleMembers = computed(() =>
                 <div class="surface-padded">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-semibold">Contributions</h3>
-                        <div class="text-xs text-gray-500">
+                        <div v-if="isAdmin" class="text-xs text-gray-500">
                             {{ contribStore.contributions.filter(c => c.is_paid).length }} / {{ contribStore.contributions.length }} paid
                         </div>
                     </div>
 
-                    <!-- Own contribution banner: hides as soon as `is_paid` flips true -->
-                    <div v-if="myContribution && !myContribution.is_paid" class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 flex-wrap">
-                        <div>
+                    <!-- Member view: only own contribution, no button to self-mark -->
+                    <div v-if="!isAdmin">
+                        <div v-if="myContribution && !myContribution.is_paid" class="p-4 bg-amber-50 border border-amber-200 rounded-xl">
                             <div class="font-semibold text-amber-900">Your contribution is due</div>
-                            <div class="text-sm text-amber-700">{{ formatINR(myContribution.amount) }} · Due {{ formatDate(myContribution.due_date) }}</div>
+                            <div class="text-sm text-amber-800 mt-0.5">{{ formatINR(myContribution.amount) }} · Due {{ formatDate(myContribution.due_date) }}</div>
+                            <div class="text-[11px] text-amber-700 mt-2">Pay the admin directly. They'll mark your contribution as received — you don't need to do anything on this screen.</div>
                         </div>
-                        <button @click="showPaymentModal = true" :disabled="loading" class="btn-primary btn-sm">
-                            {{ loading ? 'Saving…' : 'Mark as paid' }}
-                        </button>
-                    </div>
-                    <div v-else-if="myContribution && myContribution.is_paid" class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-2">
-                        <span>✓</span>
-                        <span>
-                            You paid {{ formatINR(myContribution.amount) }}
-                            <span v-if="myContribution.paid_at">on {{ formatDate(myContribution.paid_at) }}</span>
-                            <span v-if="myContribution.paid_late" class="text-amber-700 font-medium"> (late)</span>
-                        </span>
+                        <div v-else-if="myContribution?.is_paid" class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-2">
+                            <span>✓</span>
+                            <span>
+                                Your contribution of {{ formatINR(myContribution.amount) }} was recorded
+                                <span v-if="myContribution.paid_at">on {{ formatDate(myContribution.paid_at) }}</span>
+                                <span v-if="myContribution.paid_late" class="text-amber-700 font-medium"> (late)</span>.
+                            </span>
+                        </div>
+                        <div v-else class="text-sm text-gray-500 text-center py-4">No contribution record for you in this cycle.</div>
                     </div>
 
-                    <table class="w-full text-sm">
+                    <!-- Admin view: full list + Mark paid actions -->
+                    <table v-else class="w-full text-sm">
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="c in contribStore.contributions" :key="c.id">
                                 <td class="py-2.5">
@@ -418,9 +418,8 @@ const eligibleMembers = computed(() =>
                                     <span v-else :class="contribStatusBadge[c.status]" class="capitalize">{{ c.status }}</span>
                                 </td>
                                 <td class="py-2.5 pl-3 text-right">
-                                    <!-- "Mark paid" shows ONLY while unpaid. `is_paid` is the single source of truth. -->
                                     <button
-                                        v-if="isAdmin && !c.is_paid"
+                                        v-if="!c.is_paid"
                                         @click="recordMemberPayment(c.user_id)"
                                         :disabled="loading"
                                         class="text-xs text-indigo-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"

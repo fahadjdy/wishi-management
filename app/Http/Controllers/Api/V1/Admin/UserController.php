@@ -72,6 +72,39 @@ class UserController extends Controller
         return response()->json(['data' => new AdminUserResource($user)]);
     }
 
+    /**
+     * Platform admin creates a member account and manually assigns credentials.
+     * Self-registration is disabled — only this path creates new users.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'email:rfc', 'max:160', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^\+?[0-9\s\-]{7,20}$/', 'unique:users,phone'],
+            'password' => ['required', 'string', 'min:8', 'max:72'],
+            'credit_score' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'is_admin' => ['sometimes', 'boolean'],
+        ]);
+
+        $user = new User;
+        $user->name = $data['name'];
+        $user->email = strtolower($data['email']);
+        $user->phone = $data['phone'] ?? null;
+        $user->password = $data['password']; // Hashed by User::$casts
+        $user->credit_score = $data['credit_score'] ?? 70;
+        $user->trust_level = app(\App\Services\CreditScoreService::class)->resolveTrustLevel($user->credit_score);
+        $user->is_admin = (bool) ($data['is_admin'] ?? false);
+        $user->email_verified_at = now();
+        $user->save();
+
+        $this->audit->log(null, $request->user(), 'user_created_by_admin',
+            "Admin created account for {$user->email}" . ($user->is_admin ? ' (platform admin)' : ''),
+            ['target_user_id' => $user->id, 'is_admin' => $user->is_admin]);
+
+        return response()->json(['data' => new AdminUserResource($user)], 201);
+    }
+
     public function toggleAdmin(Request $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);

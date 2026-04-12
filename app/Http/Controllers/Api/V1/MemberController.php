@@ -17,6 +17,23 @@ class MemberController extends Controller
     public function index(Request $request, Wishi $wishi): JsonResponse
     {
         $this->authorize('view', $wishi);
+
+        $viewer = $request->user();
+        $isAdmin = (int) $wishi->created_by === (int) $viewer->id;
+
+        // Privacy rule: non-admin members cannot see the full member list.
+        // They only see their own membership row (for self-service lookups).
+        if (! $isAdmin) {
+            $own = $wishi->members()
+                ->where('user_id', $viewer->id)
+                ->with('user')
+                ->get();
+            return response()->json([
+                'data' => WishiMemberResource::collection($own),
+                'meta' => ['restricted' => true, 'reason' => 'Only the WISHI admin can view the member list.'],
+            ]);
+        }
+
         $members = $wishi->members()->with('user')->orderByDesc('created_at')->get();
         return response()->json(['data' => WishiMemberResource::collection($members)]);
     }

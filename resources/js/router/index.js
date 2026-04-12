@@ -8,12 +8,9 @@ const routes = [
         component: () => import('@/pages/auth/Login.vue'),
         meta: { layout: 'auth', guest: true },
     },
-    {
-        path: '/register',
-        name: 'register',
-        component: () => import('@/pages/auth/Register.vue'),
-        meta: { layout: 'auth', guest: true },
-    },
+    // Self-registration removed — members are created by platform admins.
+    // Any old /register bookmark redirects to login.
+    { path: '/register', redirect: '/login' },
     {
         path: '/',
         component: () => import('@/layouts/AppLayout.vue'),
@@ -28,9 +25,9 @@ const routes = [
             // Tab shown is controlled by route.meta.tab so deep-linking works.
             { path: 'wishis/:uuid', name: 'wishis.show', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'overview' } },
             { path: 'wishis/:uuid/cycles', name: 'wishis.cycles', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'cycles' } },
-            { path: 'wishis/:uuid/members', name: 'wishis.members', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'members' } },
-            { path: 'wishis/:uuid/settings', name: 'wishis.settings', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'settings' } },
-            { path: 'wishis/:uuid/audit-log', name: 'wishis.audit', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'audit' } },
+            { path: 'wishis/:uuid/members', name: 'wishis.members', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'members', requiresWishiAdmin: true } },
+            { path: 'wishis/:uuid/settings', name: 'wishis.settings', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'settings', requiresWishiAdmin: true } },
+            { path: 'wishis/:uuid/audit-log', name: 'wishis.audit', component: () => import('@/pages/wishis/Show.vue'), meta: { tab: 'audit', requiresWishiAdmin: true } },
 
             // Cycle drill-down stays its own page.
             { path: 'wishis/:uuid/cycles/:cycleId', name: 'wishis.cycle', component: () => import('@/pages/wishis/CycleDetail.vue') },

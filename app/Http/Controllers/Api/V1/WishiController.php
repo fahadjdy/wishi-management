@@ -82,4 +82,37 @@ class WishiController extends Controller
             'status' => $member->status,
         ], 201);
     }
+
+    public function invite(Request $request, Wishi $wishi): JsonResponse
+    {
+        $this->authorize('manageMembers', $wishi);
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+        $user = \App\Models\User::findOrFail($data['user_id']);
+        $member = $this->membership->invite($wishi, $user, $request->user());
+        return response()->json(['data' => new \App\Http\Resources\WishiMemberResource($member->load('user'))], 201);
+    }
+
+    public function acceptInvite(Request $request, Wishi $wishi): JsonResponse
+    {
+        $member = \App\Models\WishiMember::where('wishi_id', $wishi->id)
+            ->where('user_id', $request->user()->id)
+            ->where('status', 'pending')
+            ->where('invited_by_admin', true)
+            ->firstOrFail();
+        $updated = $this->membership->acceptInvite($member, $request->user());
+        return response()->json(['data' => new \App\Http\Resources\WishiMemberResource($updated->load('user'))]);
+    }
+
+    public function declineInvite(Request $request, Wishi $wishi): JsonResponse
+    {
+        $member = \App\Models\WishiMember::where('wishi_id', $wishi->id)
+            ->where('user_id', $request->user()->id)
+            ->where('status', 'pending')
+            ->where('invited_by_admin', true)
+            ->firstOrFail();
+        $this->membership->declineInvite($member, $request->user(), $request->input('reason'));
+        return response()->json(['message' => 'Invitation declined.']);
+    }
 }

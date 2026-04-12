@@ -3,17 +3,50 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useMemberStore } from '@/stores/member';
 import { useWishiStore } from '@/stores/wishi';
+import { useAdminStore } from '@/stores/admin';
 import { useToast } from 'vue-toastification';
+import api from '@/api/client';
 import { formatDate, trustColor, memberStatusLabels } from '@/utils/format';
 
 const route = useRoute();
 const store = useMemberStore();
 const wishiStore = useWishiStore();
+const adminStore = useAdminStore();
 const toast = useToast();
 
 const filter = ref('all');
 const expanded = ref(new Set());
 const isAdmin = computed(() => wishiStore.currentWishi?.is_admin);
+
+// Invite a platform user to this WISHI
+const showInviteModal = ref(false);
+const inviteSearch = ref('');
+const inviteLoading = ref(false);
+const inviteResults = computed(() => {
+    const q = inviteSearch.value.trim().toLowerCase();
+    const existingIds = new Set(store.members.map((m) => m.user_id));
+    const creatorId = wishiStore.currentWishi?.created_by;
+    return (adminStore.users || [])
+        .filter((u) => !u.is_admin && u.id !== creatorId && !existingIds.has(u.id) && !u.deleted_at)
+        .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+        .slice(0, 20);
+});
+
+async function openInvite() {
+    inviteSearch.value = '';
+    showInviteModal.value = true;
+    try { await adminStore.fetchUsers({ per_page: 200, role: 'member', status: 'active' }); } catch {}
+}
+async function inviteUser(userId) {
+    inviteLoading.value = true;
+    try {
+        await api.post(`/wishis/${route.params.uuid}/invite`, { user_id: userId });
+        toast.success('Invitation sent. Member will see Accept/Decline on their dashboard.');
+        await store.fetch(route.params.uuid);
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Failed to invite.');
+    } finally { inviteLoading.value = false; }
+}
 const filtered = computed(() => {
     if (filter.value === 'all') return store.members;
     return store.members.filter((m) => m.status === filter.value);
@@ -66,7 +99,32 @@ const statusBadge = {
                     :class="filter === f ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'"
                     class="px-3 py-1.5 rounded-md text-xs font-medium capitalize whitespace-nowrap">{{ f }}</button>
             </div>
-            <div class="text-xs text-gray-500">{{ filtered.length }} member{{ filtered.length !== 1 ? 's' : '' }}</div>
+            <div class="flex items-center gap-3">
+                <div class="text-xs text-gray-500">{{ filtered.length }} member{{ filtered.length !== 1 ? 's' : '' }}</div>
+                <button v-if="isAdmin && wishiStore.currentWishi?.status !== 'completed' && wishiStore.currentWishi?.status !== 'cancelled'" @click="openInvite" class="btn-primary btn-sm">+ Invite member</button>
+            </div>
+        </div>
+
+        <!-- Invite modal -->
+        <div v-if="showInviteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showInviteModal = false">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] flex flex-col">
+                <h3 class="font-semibold text-lg">Invite a member</h3>
+                <p class="text-xs text-gray-500 mb-3">Pick an existing user. They'll get an invitation to accept or decline on their dashboard.</p>
+                <input v-model="inviteSearch" type="search" placeholder="Search name or email…" class="form-input mb-3" />
+                <div class="overflow-y-auto space-y-1.5 flex-1">
+                    <div v-if="!inviteResults.length" class="text-center py-10 text-sm text-gray-400">No eligible users. Create an account first via Admin → Members.</div>
+                    <div v-for="u in inviteResults" :key="u.id" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:border-indigo-300">
+                        <div class="min-w-0">
+                            <div class="font-medium truncate">{{ u.name }}</div>
+                            <div class="text-xs text-gray-500 truncate">{{ u.email }} · credit {{ u.credit_score }}</div>
+                        </div>
+                        <button @click="inviteUser(u.id)" :disabled="inviteLoading" class="btn-primary btn-sm shrink-0">Invite</button>
+                    </div>
+                </div>
+                <div class="flex justify-end mt-3">
+                    <button @click="showInviteModal = false" class="btn-secondary">Close</button>
+                </div>
+            </div>
         </div>
 
         <!-- Mobile cards -->

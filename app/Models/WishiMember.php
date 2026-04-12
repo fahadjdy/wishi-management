@@ -16,6 +16,7 @@ class WishiMember extends Model
         'user_id',
         'status',
         'is_admin',
+        'invited_by_admin',
         'joined_at',
         'has_won',
         'won_in_cycle',
@@ -25,6 +26,7 @@ class WishiMember extends Model
     {
         return [
             'is_admin' => 'boolean',
+            'invited_by_admin' => 'boolean',
             'has_won' => 'boolean',
             'joined_at' => 'datetime',
             'won_in_cycle' => 'integer',

@@ -16,10 +16,13 @@ A digital chit-fund / committee / society platform. A **platform admin** creates
 
 | Role | What they can do |
 |---|---|
-| **Platform Admin** (`users.is_admin = true`) | Create WISHIs, manage all platform users (lock / unlock / promote / adjust credit), view analytics dashboard. When they create a WISHI they also become that WISHI's admin. **Admins are never members** — no contributions, no bidding, no wins (except cycle #1 "organizer payout"). |
-| **Member** (`users.is_admin = false`) | Join WISHIs (subject to admin approval), contribute, bid in tender cycles, view their credit score, receive notifications. Cannot create WISHIs. |
+| **Platform Admin** (`users.is_admin = true`) | Create WISHIs, **create member accounts and assign credentials**, **invite members to WISHIs**, manage all platform users (lock / unlock / promote / adjust credit), view analytics dashboard. When they create a WISHI they also become that WISHI's admin. **Admins are never members** — no contributions, no bidding, no wins (except cycle #1 "organizer payout"). |
+| **Member** (`users.is_admin = false`) | See their own WISHIs, accept/decline admin invitations, place tender bids (immutable), view their own contribution and credit score, change their password. **Cannot**: create WISHIs, self-register, see other members, see contribution lists, see bid amounts of others during open window, record their own payments. |
 
-**Key rule:** the creator of a WISHI and its members are disjoint sets. Admins manage; members participate.
+**Key rules:**
+- Creator of a WISHI and its members are disjoint sets. Admins manage; members participate.
+- **Self-registration is disabled.** Only platform admins create accounts (via Admin → Members → "+ Create member account"). The generated email + password must be shared with the member out-of-band.
+- **Members cannot record their own payments.** Only the WISHI admin clicks "Mark paid" once the cash has actually been received — keeps the audit trail authoritative.
 
 ---
 
@@ -51,19 +54,36 @@ A digital chit-fund / committee / society platform. A **platform admin** creates
 
 ## 4. Member lifecycle inside a WISHI
 
+Two entry paths:
+
 ```
-(requests join) ──► [pending] ──► admin approve ──► [approved]/[active] ──► (removed or left)
+A) Admin invites (preferred):
+   admin clicks "+ Invite member" ──► [pending, invited_by_admin=true]
+       ├── member clicks "Join now"   ──► [approved] / [active]
+       └── member clicks "Decline"    ──► (soft-deleted, admin can re-invite)
+
+B) Member requests join (when admin enables it):
+   member posts /join ──► [pending, invited_by_admin=false] ──► admin approves ──► [approved]
 ```
 
-Guards enforced in `MembershipService::guardEligibility`:
-- Admin cannot join their own WISHI.
+Invitation is the default UX. Admin-created accounts typically come with invitations already queued; the member just sees "Join now / Decline" on their dashboard after logging in.
+
+Guards enforced in `MembershipService`:
+- Admin cannot join their own WISHI (neither direction).
 - WISHI status must be `draft` or `active`.
-- Min credit score (if set on WISHI) must be met.
+- Min credit score (if set on WISHI) must be met for `requestJoin`.
 - `max_active_wishis_per_member` cap (if set) must not be exceeded.
-- If WISHI has `block_if_missed_payments = true`, user's past missed contributions anywhere on the platform block them.
+- If WISHI has `block_if_missed_payments = true`, user's past missed contributions anywhere on the platform block them (for `requestJoin`).
 - Capacity check (can't exceed `total_members`).
+- `invite` skips credit/cap/missed-payment checks (admin has explicitly vetted the member by clicking Invite).
 
-Once approved, member gets a `MemberStatusNotification` in their inbox.
+Once accepted/approved, member gets a `MemberStatusNotification` in their inbox. The invitation carries a `MemberStatusNotification(status='invited')` push when sent.
+
+### Admin-created accounts
+
+`POST /api/v1/admin/users` (platform admin only) — accepts `name`, `email`, `phone?`, `password`, `credit_score?`, `is_admin?`. Password is hashed via `User::$casts`. Email verified immediately.
+
+The admin UI (`/admin/users`) has a **"+ Create member account"** button that opens a modal with auto-generated passwords so the admin can paste the credentials to the member over WhatsApp/SMS/etc.
 
 ---
 
@@ -142,7 +162,7 @@ So "first 2 random, then 1 tender" repeats three times across 9 months → 3 ten
 ## 9. Contribution flow (per cycle)
 
 1. Cycle opens → `contribution_open`. A `contributions` row is created for every approved/active member. Admin is **not** in this list.
-2. Each member pays via UI → `POST /contributions` with `user_id` (admin recording on behalf) or own ID.
+2. Payments are always recorded **by the admin** via `POST /contributions` with the target `user_id`. Members cannot self-report payments — they pay the admin out-of-band (cash/UPI/bank transfer) and the admin marks it received.
 3. Payment validation in `ContributionService::recordPayment`:
    - If paid ≤ 2 days before due → `early_payment` (+15 credit)
    - If paid on/before due → `on_time_payment` (+10)
@@ -231,6 +251,34 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 
 ---
 
+## 13a. Privacy — what members can and cannot see
+
+Members have **minimal visibility by design**. Almost everything in a WISHI is admin-only.
+
+| Item | Visible to member? |
+|---|---|
+| WISHI list they're part of | ✅ |
+| Their own contribution (status, amount, due date) | ✅ |
+| Their own tender bid (locked after first submission) | ✅ |
+| Winner name for any cycle | ✅ |
+| Cycle status, pool size, dates | ✅ |
+| Pending admin invitations (on dashboard) | ✅ |
+| Password change (their own) | ✅ |
+| **Other members' details (names, phones, scores)** | ❌ |
+| **Contributions list (who paid, who didn't)** | ❌ |
+| **Bid amounts of other bidders while tender window is open** | ❌ |
+| **Admin topup amount on cycles** | ❌ |
+| **Surplus action, selection seed, deferred pool totals** | ❌ |
+| **Members tab, Settings tab, Audit log tab** | ❌ (tabs hidden entirely) |
+| **Record / mark-paid any contribution** | ❌ (admin only) |
+
+Enforcement happens at three levels:
+1. **API Resources** (`CycleResource`, `WishiResource`, `UserSummaryResource`) use `$this->when($isAdmin, ...)` to strip admin-only fields before serialization.
+2. **Controllers** scope queries by viewer (e.g. `ContributionController::index` only returns the viewer's own row when not admin; `MemberController::index` returns only their own membership).
+3. **Frontend Router + Tabs** hide UI affordances members shouldn't see (`Members`, `Settings`, `Audit` tabs are only added to the tab list when `isAdmin` is true; a `requiresWishiAdmin` route meta guards direct URL access).
+
+All three are needed — UI hiding is courtesy; the API must never leak admin-only fields regardless of UI state.
+
 ## 14. Security baseline
 
 - **Sanctum SPA cookies** (HttpOnly, SameSite=Lax, Secure in prod).
@@ -253,14 +301,14 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 ### Web
 - `GET /*` → `app.blade.php` (Vue SPA mounts; `api|sanctum|storage|up` are excluded).
 
-### API (`/api/v1` prefix, Sanctum-authenticated except register/login)
+### API (`/api/v1` prefix, Sanctum-authenticated except `/login`)
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/register` | Create a member account (is_admin=false) |
 | POST | `/login` | Issue session cookie |
 | POST | `/logout` | Destroy session |
 | GET | `/me` | Current user |
+| PUT | `/me/password` | Change own password (only self-service edit) |
 | GET | `/dashboard` | Member-side stats + upcoming payments |
 | GET | `/me/credit-score` | Own score + 50 most recent logs |
 | GET | `/notifications` | Inbox |
@@ -269,7 +317,10 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 | GET/POST | `/wishis` | List / create (create is admin-only) |
 | GET/PUT | `/wishis/{uuid}` | Show / update settings |
 | POST | `/wishis/{uuid}/activate` | Start WISHI (when full) |
-| POST | `/wishis/{uuid}/join` | Request to join |
+| POST | `/wishis/{uuid}/join` | Request to join (member-initiated) |
+| POST | `/wishis/{uuid}/invite` | Admin invites an existing user |
+| POST | `/wishis/{uuid}/accept-invite` | Member accepts admin invitation |
+| POST | `/wishis/{uuid}/decline-invite` | Member declines admin invitation |
 | GET | `/wishis/{uuid}/members` | Member roster |
 | PUT | `/wishis/{uuid}/members/{m}/approve` | Approve join |
 | PUT | `/wishis/{uuid}/members/{m}/reject` | Reject join |
@@ -286,6 +337,7 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 | GET | `/wishis/{uuid}/audit-logs` | Wishi-scoped audit |
 | GET | `/admin/dashboard` | Platform analytics (platform admin only) |
 | GET | `/admin/users` | All users, search + filter |
+| POST | `/admin/users` | **Create a new account (replaces self-registration)** |
 | GET | `/admin/users/{id}` | User detail |
 | PUT | `/admin/users/{id}/toggle-admin` | Grant/revoke platform admin |
 | PUT | `/admin/users/{id}/lock` | Lock account |
@@ -314,7 +366,7 @@ resources/js/
   router/index.js             - routes + auth + admin-only guards
   pages/
     Dashboard.vue             - member/admin home with next-payment card
-    auth/Login.vue, Register.vue
+    auth/Login.vue                 - only auth page; registration removed
     wishis/
       Index.vue               - list of WISHIs with rich cards
       Create.vue              - 4-step wizard incl. live pattern preview

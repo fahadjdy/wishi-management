@@ -73,9 +73,8 @@ async function submit() {
             </button>
         </form>
 
-        <div class="mt-6 text-center text-sm text-gray-600">
-            Don't have an account?
-            <RouterLink to="/register" class="font-semibold text-indigo-600 hover:text-indigo-700">Create one</RouterLink>
+        <div class="mt-6 text-center text-xs text-gray-500">
+            Accounts are issued by your WISHI admin. Contact them for your credentials.
         </div>
 
         <div class="mt-6 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-800">

@@ -49,6 +49,89 @@ class MembershipService
         });
     }
 
+    /**
+     * Admin adds a user to a WISHI. Creates an "invited" WishiMember row the user
+     * must accept (or decline) from their dashboard before the seat is counted.
+     */
+    public function invite(Wishi $wishi, User $user, User $actor): WishiMember
+    {
+        if ((int) $wishi->created_by === (int) $user->id) {
+            throw new \DomainException('Admins cannot be invited as members of their own WISHI.');
+        }
+        if (in_array($wishi->status, ['completed', 'cancelled'], true)) {
+            throw new \DomainException('This WISHI is no longer accepting members.');
+        }
+        if ($wishi->activeMembers()->count() >= (int) $wishi->total_members) {
+            throw new \DomainException('This WISHI is already at full capacity.');
+        }
+
+        return DB::transaction(function () use ($wishi, $user, $actor) {
+            $existing = WishiMember::where('wishi_id', $wishi->id)
+                ->where('user_id', $user->id)
+                ->first();
+            if ($existing && in_array($existing->status, ['pending', 'approved', 'active'], true)) {
+                throw new \DomainException('User is already a member or has a pending request/invite.');
+            }
+
+            $row = $existing
+                ? tap($existing)->update(['status' => 'pending', 'invited_by_admin' => true, 'joined_at' => null])
+                : WishiMember::create([
+                    'wishi_id' => $wishi->id,
+                    'user_id' => $user->id,
+                    'status' => 'pending',
+                    'invited_by_admin' => true,
+                ]);
+
+            $this->audit->log($wishi, $actor, 'member_invited', "Admin invited user #{$user->id}", [
+                'user_id' => $user->id,
+                'invited_by_admin' => true,
+            ]);
+
+            $user->notify(new MemberStatusNotification($wishi, 'invited',
+                'The admin has invited you to join. Open your dashboard to accept or decline.'));
+
+            return $row;
+        });
+    }
+
+    public function acceptInvite(WishiMember $member, User $user): WishiMember
+    {
+        if ((int) $member->user_id !== (int) $user->id) {
+            throw new \DomainException('You can only accept your own invitation.');
+        }
+        if (! $member->invited_by_admin || $member->status !== 'pending') {
+            throw new \DomainException('No pending invitation to accept.');
+        }
+        if ($member->wishi->activeMembers()->count() >= (int) $member->wishi->total_members) {
+            throw new \DomainException('WISHI is already full.');
+        }
+        return DB::transaction(function () use ($member, $user) {
+            $member->update(['status' => 'approved', 'joined_at' => now()]);
+            $this->audit->log($member->wishi, $user, 'invite_accepted', 'User accepted admin invitation',
+                ['user_id' => $user->id]);
+            $this->notifyIfJustFilled($member->wishi->fresh());
+            return $member->fresh();
+        });
+    }
+
+    public function declineInvite(WishiMember $member, User $user, ?string $reason = null): void
+    {
+        if ((int) $member->user_id !== (int) $user->id) {
+            throw new \DomainException('You can only decline your own invitation.');
+        }
+        if (! $member->invited_by_admin || $member->status !== 'pending') {
+            throw new \DomainException('No pending invitation to decline.');
+        }
+        DB::transaction(function () use ($member, $user, $reason) {
+            $member->update(['status' => 'removed']);
+            $member->delete();
+            $this->audit->log($member->wishi, $user, 'invite_declined', 'User declined admin invitation', [
+                'user_id' => $user->id,
+                'reason' => $reason,
+            ]);
+        });
+    }
+
     public function approve(WishiMember $member, User $actor): WishiMember
     {
         return DB::transaction(function () use ($member, $actor) {

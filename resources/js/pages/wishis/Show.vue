@@ -50,9 +50,10 @@ const tabs = computed(() => {
     const base = [
         { key: 'overview', label: 'Overview', route: 'wishis.show' },
         { key: 'cycles', label: 'Cycles', route: 'wishis.cycles' },
-        { key: 'members', label: 'Members', route: 'wishis.members' },
     ];
+    // Members / Settings / Audit are admin-only. Regular members only see Overview + Cycles.
     if (isAdmin.value) {
+        base.push({ key: 'members', label: 'Members', route: 'wishis.members' });
         base.push({ key: 'settings', label: 'Settings', route: 'wishis.settings' });
         base.push({ key: 'audit', label: 'Audit Log', route: 'wishis.audit' });
     }

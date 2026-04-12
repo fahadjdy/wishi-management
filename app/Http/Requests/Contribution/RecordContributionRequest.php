@@ -9,10 +9,10 @@ class RecordContributionRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        // Only the WISHI admin can record contribution payments (privacy + integrity rule).
         $cycle = $this->route('cycle');
         $user = $this->user();
-        return (int) $cycle->wishi->created_by === (int) $user->id
-            || (int) $this->input('user_id', $user->id) === (int) $user->id;
+        return (int) $cycle->wishi->created_by === (int) $user->id;
     }
 
     public function rules(): array

@@ -10,6 +10,7 @@ class CycleResource extends JsonResource
     {
         $user = $request->user();
         $isAdmin = $user && $this->wishi && (int) $this->wishi->created_by === (int) $user->id;
+        $isSelfWinner = $user && $this->winner_id && (int) $this->winner_id === (int) $user->id;
 
         return [
             'id' => $this->id,
@@ -18,16 +19,23 @@ class CycleResource extends JsonResource
             'mode' => $this->mode,
             'status' => $this->status,
             'total_pool' => (float) $this->total_pool,
-            'winner_id' => $this->winner_id,
-            'winning_bid' => $this->winning_bid !== null ? (float) $this->winning_bid : null,
+
+            // Winner identity is revealed only to the admin or the winner themselves.
+            // Other members just see the cycle completed — no peeking at who won.
+            'winner_id' => $this->when($isAdmin || $isSelfWinner, $this->winner_id),
+            'winning_bid' => $this->when($isAdmin || $isSelfWinner, $this->winning_bid !== null ? (float) $this->winning_bid : null),
             'surplus' => (float) $this->surplus,
-            'surplus_action' => $this->surplus_action,
-            'surplus_recipient_id' => $this->surplus_recipient_id,
+            'surplus_action' => $this->when($isAdmin, $this->surplus_action),
+            'surplus_recipient_id' => $this->when($isAdmin, $this->surplus_recipient_id),
             'deferred_amount' => (float) $this->deferred_amount,
             'deferred_released_at' => optional($this->deferred_released_at)?->toIso8601String(),
-            'deferred_payout_id' => $this->deferred_payout_id,
+            'deferred_payout_id' => $this->when($isAdmin, $this->deferred_payout_id),
             'deferred_pending' => (float) $this->deferred_amount > 0 && ! $this->deferred_released_at,
-            'selection_method' => $this->selection_method,
+            'admin_topup_amount' => $this->when($isAdmin, (float) $this->admin_topup_amount),
+            'admin_topup_by_user_id' => $this->when($isAdmin, $this->admin_topup_by_user_id),
+            'winners_count' => (int) $this->winners_count,
+
+            'selection_method' => $this->when($isAdmin || $isSelfWinner, $this->selection_method),
             'selection_seed' => $this->when($isAdmin, $this->selection_seed),
             'selected_at' => optional($this->selected_at)?->toIso8601String(),
             'payout_amount' => $this->payout_amount !== null ? (float) $this->payout_amount : null,
@@ -36,7 +44,9 @@ class CycleResource extends JsonResource
             'tender_opens_at' => optional($this->tender_opens_at)?->toIso8601String(),
             'tender_closes_at' => optional($this->tender_closes_at)?->toIso8601String(),
             'is_bidding_open' => $this->isBiddingOpen(),
-            'winner' => new UserSummaryResource($this->whenLoaded('winner')),
+            'winner' => $this->when($isAdmin || $isSelfWinner, new UserSummaryResource($this->whenLoaded('winner'))),
+            'viewer_is_winner' => (bool) $isSelfWinner,
+            'viewer_is_admin' => (bool) $isAdmin,
         ];
     }
 }

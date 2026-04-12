@@ -17,9 +17,40 @@ const page = ref(1);
 
 const showLockModal = ref(false);
 const showCreditModal = ref(false);
+const showCreateModal = ref(false);
 const target = ref(null);
 const lockForm = reactive({ minutes: 60, reason: '' });
 const creditForm = reactive({ points: 0, reason: '' });
+const createForm = reactive({ name: '', email: '', phone: '', password: '', credit_score: 70, is_admin: false });
+const createErrors = ref({});
+const createLoading = ref(false);
+
+function genPassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let out = '';
+    for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    createForm.password = out + '!1';
+}
+function openCreate() {
+    createForm.name = ''; createForm.email = ''; createForm.phone = '';
+    createForm.password = ''; createForm.credit_score = 70; createForm.is_admin = false;
+    createErrors.value = {};
+    genPassword();
+    showCreateModal.value = true;
+}
+async function submitCreate() {
+    createLoading.value = true;
+    createErrors.value = {};
+    try {
+        await store.createUser(createForm);
+        toast.success(`Account created · share these credentials with the member: ${createForm.email} / ${createForm.password}`);
+        showCreateModal.value = false;
+        await load();
+    } catch (e) {
+        if (e.response?.status === 422) createErrors.value = e.response.data.errors || {};
+        else toast.error(e.response?.data?.message || 'Failed.');
+    } finally { createLoading.value = false; }
+}
 
 // Fetch everything, split client-side (one API trip for 2 tables)
 async function load() {
@@ -91,9 +122,12 @@ async function adjustCredit() {
 
 <template>
     <div class="space-y-5">
-        <div>
-            <h1 class="text-2xl font-bold">Member Management</h1>
-            <p class="text-sm text-gray-500">Platform admins and members shown separately. Lock, restore, promote or adjust credit.</p>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h1 class="text-2xl font-bold">Member Management</h1>
+                <p class="text-sm text-gray-500">Create accounts and assign credentials, manage admins and members separately.</p>
+            </div>
+            <button @click="openCreate" class="btn-primary">+ Create member account</button>
         </div>
 
         <!-- Summary cards -->
@@ -328,6 +362,57 @@ async function adjustCredit() {
                 <div class="flex justify-end gap-2 mt-5">
                     <button @click="showCreditModal = false" class="btn-secondary">Cancel</button>
                     <button @click="adjustCredit" class="btn-primary">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create member account modal -->
+        <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showCreateModal = false">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                <h3 class="font-semibold text-lg mb-1">Create a new account</h3>
+                <p class="text-xs text-gray-500 mb-4">Members sign up only by admin creation. Share the email + password with them.</p>
+                <div class="space-y-3">
+                    <div>
+                        <label class="form-label">Full name</label>
+                        <input v-model="createForm.name" type="text" required class="form-input" />
+                        <p v-if="createErrors.name" class="form-error">{{ createErrors.name[0] }}</p>
+                    </div>
+                    <div>
+                        <label class="form-label">Email</label>
+                        <input v-model="createForm.email" type="email" required class="form-input" />
+                        <p v-if="createErrors.email" class="form-error">{{ createErrors.email[0] }}</p>
+                    </div>
+                    <div>
+                        <label class="form-label">Phone <span class="text-gray-400 font-normal">(optional)</span></label>
+                        <input v-model="createForm.phone" type="tel" class="form-input" placeholder="+91…" />
+                        <p v-if="createErrors.phone" class="form-error">{{ createErrors.phone[0] }}</p>
+                    </div>
+                    <div>
+                        <label class="form-label">Password</label>
+                        <div class="flex gap-2">
+                            <input v-model="createForm.password" type="text" required class="form-input flex-1 font-mono text-sm" minlength="8" />
+                            <button type="button" @click="genPassword" class="btn-secondary btn-sm">Regen</button>
+                        </div>
+                        <p v-if="createErrors.password" class="form-error">{{ createErrors.password[0] }}</p>
+                        <p class="text-[11px] text-gray-500 mt-1">Shown so admin can share manually. Min 8 chars.</p>
+                    </div>
+                    <div>
+                        <label class="form-label">Starting credit score</label>
+                        <input v-model.number="createForm.credit_score" type="number" min="0" max="100" class="form-input" />
+                    </div>
+                    <label class="flex items-start gap-3">
+                        <input v-model="createForm.is_admin" type="checkbox" class="rounded text-indigo-600 mt-1" />
+                        <div>
+                            <div class="font-medium text-sm">Grant platform admin</div>
+                            <div class="text-xs text-gray-500">Platform admins can create WISHIs and manage members.</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="flex justify-end gap-2 mt-5">
+                    <button @click="showCreateModal = false" class="btn-secondary">Cancel</button>
+                    <button @click="submitCreate" :disabled="createLoading" class="btn-primary">
+                        {{ createLoading ? 'Creating…' : 'Create account' }}
+                    </button>
                 </div>
             </div>
         </div>
