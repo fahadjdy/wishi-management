@@ -24,10 +24,18 @@ class CyclePolicy
         return (int) $cycle->wishi->created_by === (int) $user->id;
     }
 
-    public function selectWinner(User $user, Cycle $cycle): bool
+    public function selectWinner(User $user, Cycle $cycle): \Illuminate\Auth\Access\Response
     {
-        return (int) $cycle->wishi->created_by === (int) $user->id
-            && in_array($cycle->status, ['selection_pending', 'bidding_open', 'contribution_open']);
+        if ((int) $cycle->wishi->created_by !== (int) $user->id) {
+            return \Illuminate\Auth\Access\Response::deny('Only the WISHI admin can select a winner.');
+        }
+        if ($cycle->cycle_number === 1) {
+            return \Illuminate\Auth\Access\Response::deny('Cycle #1 is the organizer payout — winner is pre-assigned to admin and cannot be changed.');
+        }
+        if (! in_array($cycle->status, ['selection_pending', 'bidding_open', 'contribution_open'], true)) {
+            return \Illuminate\Auth\Access\Response::deny('Cycle is not in a selectable state.');
+        }
+        return \Illuminate\Auth\Access\Response::allow();
     }
 
     public function handleSurplus(User $user, Cycle $cycle): bool
@@ -58,6 +66,9 @@ class CyclePolicy
 
     public function placeBid(User $user, Cycle $cycle): \Illuminate\Auth\Access\Response
     {
+        if ($cycle->cycle_number === 1) {
+            return \Illuminate\Auth\Access\Response::deny('Cycle #1 is the organizer payout — no bidding.');
+        }
         if ($cycle->mode !== 'tender') {
             return \Illuminate\Auth\Access\Response::deny('This cycle is not a tender cycle.');
         }

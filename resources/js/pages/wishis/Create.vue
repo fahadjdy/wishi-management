@@ -57,6 +57,25 @@ function removePatternStep(idx) {
     form.hybrid_pattern.splice(idx, 1);
 }
 
+// Expand the pattern across all cycles so admin can SEE exactly how the WISHI
+// will play out. Cycle #1 is always the organizer payout (admin wins).
+const patternPreview = computed(() => {
+    const duration = Number(form.duration_months || 0);
+    const pattern = form.hybrid_pattern || [];
+    if (!duration || !pattern.length) return [];
+    const out = [];
+    for (let n = 1; n <= duration; n++) {
+        const mode = pattern[(n - 1) % pattern.length] || 'random';
+        out.push({ cycle: n, mode, organizer: n === 1 });
+    }
+    return out;
+});
+const previewCounts = computed(() => {
+    const t = patternPreview.value.filter((c) => c.mode === 'tender' && !c.organizer).length;
+    const r = patternPreview.value.filter((c) => c.mode === 'random' || c.organizer).length;
+    return { tender: t, random: r };
+});
+
 const steps = [
     { num: 1, label: 'Basics' },
     { num: 2, label: 'Join rules' },
@@ -202,13 +221,40 @@ async function submit() {
             <div v-if="form.cycle_type === 'hybrid'" class="space-y-3">
                 <label class="form-label">Hybrid pattern (repeats over the WISHI duration)</label>
                 <div class="flex flex-wrap gap-2 items-center bg-gray-50 p-3 rounded-lg">
-                    <span v-for="(p, idx) in form.hybrid_pattern" :key="idx" class="badge-brand cursor-pointer" @click="removePatternStep(idx)">
+                    <span v-for="(p, idx) in form.hybrid_pattern" :key="idx" class="badge-brand cursor-pointer" @click="removePatternStep(idx)" :title="'Click to remove step ' + (idx + 1)">
                         {{ idx + 1 }}. {{ p }} ✕
                     </span>
                     <button type="button" @click="addPatternStep('random')" class="btn-secondary btn-sm">+ Random</button>
                     <button type="button" @click="addPatternStep('tender')" class="btn-secondary btn-sm">+ Tender</button>
                 </div>
-                <p class="text-xs text-gray-500">Click a step to remove it. Pattern repeats over {{ form.duration_months }} months.</p>
+                <p class="text-xs text-gray-500">Click a step to remove it. The pattern then repeats for every {{ form.hybrid_pattern.length }} cycles.</p>
+
+                <!-- Live preview: exactly which cycle is random vs tender -->
+                <div v-if="patternPreview.length" class="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="font-semibold text-gray-700">Preview · {{ form.duration_months }} cycles</div>
+                        <div class="flex items-center gap-2 text-gray-500">
+                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-500"></span>{{ previewCounts.random }} random</span>
+                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>{{ previewCounts.tender }} tender</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 xl:grid-cols-12 gap-1.5">
+                        <div v-for="c in patternPreview" :key="c.cycle"
+                            class="rounded-lg border px-2 py-2 text-center text-[11px] leading-tight"
+                            :class="c.organizer
+                                ? 'bg-indigo-600 text-white border-indigo-700'
+                                : (c.mode === 'tender' ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-indigo-50 border-indigo-200 text-indigo-800')"
+                            :title="c.organizer ? 'Cycle 1 — Organizer payout (admin wins)' : `Cycle ${c.cycle} — ${c.mode}`"
+                        >
+                            <div class="font-bold">#{{ c.cycle }}</div>
+                            <div v-if="c.organizer">👑</div>
+                            <div v-else class="capitalize">{{ c.mode === 'tender' ? 'tender' : 'random' }}</div>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-gray-500">
+                        👑 Cycle #1 is always the organizer payout — admin wins, regardless of the pattern. The hybrid pattern then drives cycles 2 onwards.
+                    </p>
+                </div>
             </div>
 
             <div v-if="form.cycle_type !== 'random'" class="grid grid-cols-2 gap-4">

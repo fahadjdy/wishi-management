@@ -40,20 +40,29 @@ class TenderService
                 throw new \DomainException('You have already won a cycle in this WISHI.');
             }
 
-            $tender = Tender::updateOrCreate(
-                ['cycle_id' => $cycle->id, 'user_id' => $user->id],
-                [
-                    'wishi_id' => $cycle->wishi_id,
-                    'bid_amount' => $bidAmount,
-                    'placed_at' => now(),
-                    'placed_ip' => Request::ip(),
-                ]
-            );
+            // Bids are immutable. Once placed, they cannot be edited or resubmitted.
+            $existing = Tender::where('cycle_id', $cycle->id)
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                throw new \DomainException('You have already placed a bid for this cycle. Bids cannot be edited once submitted.');
+            }
+
+            $tender = Tender::create([
+                'cycle_id' => $cycle->id,
+                'wishi_id' => $cycle->wishi_id,
+                'user_id' => $user->id,
+                'bid_amount' => $bidAmount,
+                'placed_at' => now(),
+                'placed_ip' => Request::ip(),
+            ]);
 
             $this->audit->log($cycle->wishi, $user, 'bid_placed', "Bid placed in cycle #{$cycle->cycle_number}", [
                 'cycle_id' => $cycle->id,
                 'user_id' => $user->id,
                 'amount' => $bidAmount,
+                'tender_id' => $tender->id,
             ]);
 
             return $tender;

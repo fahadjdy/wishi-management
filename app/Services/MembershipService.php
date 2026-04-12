@@ -101,6 +101,10 @@ class MembershipService
 
     protected function guardEligibility(Wishi $wishi, User $user): void
     {
+        if ((int) $wishi->created_by === (int) $user->id) {
+            throw new \DomainException('Admins cannot join their own WISHI as a member.');
+        }
+
         if ($wishi->status === 'completed' || $wishi->status === 'cancelled') {
             throw new \DomainException('This WISHI is no longer accepting members.');
         }

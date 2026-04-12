@@ -75,7 +75,7 @@ class WishiController extends Controller
 
     public function join(Request $request, Wishi $wishi): JsonResponse
     {
-        $this->authorize('join', $wishi);
+        \Illuminate\Support\Facades\Gate::authorize('join', $wishi);
         $member = $this->membership->requestJoin($wishi, $request->user());
         return response()->json([
             'message' => $member->status === 'approved' ? 'You have joined the WISHI.' : 'Join request sent.',

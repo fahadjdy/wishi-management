@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Cycle\PayoutRequest;
+use App\Http\Requests\Cycle\SelectMultiWinnerRequest;
 use App\Http\Requests\Cycle\SelectWinnerRequest;
 use App\Http\Requests\Cycle\SurplusRequest;
 use App\Http\Resources\CycleResource;
@@ -29,7 +30,9 @@ class CycleController extends Controller
     public function index(Request $request, Wishi $wishi): JsonResponse
     {
         $this->authorize('view', $wishi);
-        $cycles = $wishi->cycles()->with('winner')->orderBy('cycle_number')->get();
+        // Newest-first ordering for the cycle list (DESC). Consumers that need
+        // oldest-first can sort client-side if necessary.
+        $cycles = $wishi->cycles()->with('winner')->orderByDesc('cycle_number')->get();
         return response()->json(['data' => CycleResource::collection($cycles)]);
     }
 
@@ -64,6 +67,19 @@ class CycleController extends Controller
         return response()->json(['data' => new CycleResource($cycle)]);
     }
 
+    public function selectMultiWinners(SelectMultiWinnerRequest $request, Wishi $wishi, Cycle $cycle): JsonResponse
+    {
+        $this->scope($wishi, $cycle);
+        $cycle = $this->winnerService->selectTenderMultiWinner(
+            $cycle,
+            $request->input('tender_ids'),
+            $request->user(),
+            $request->input('reason'),
+        );
+        $cycle->load('winner');
+        return response()->json(['data' => new CycleResource($cycle)]);
+    }
+
     public function surplus(SurplusRequest $request, Wishi $wishi, Cycle $cycle): JsonResponse
     {
         $this->scope($wishi, $cycle);
@@ -75,8 +91,8 @@ class CycleController extends Controller
     public function payout(PayoutRequest $request, Wishi $wishi, Cycle $cycle): JsonResponse
     {
         $this->scope($wishi, $cycle);
-        $payout = $this->payoutService->record($cycle, $request->user(), $request->validated());
-        return response()->json(['data' => new PayoutResource($payout)], 201);
+        $payouts = $this->payoutService->record($cycle, $request->user(), $request->validated());
+        return response()->json(['data' => PayoutResource::collection($payouts)], 201);
     }
 
     protected function scope(Wishi $wishi, Cycle $cycle): void

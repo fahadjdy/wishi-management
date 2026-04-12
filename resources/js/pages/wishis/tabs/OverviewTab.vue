@@ -17,7 +17,9 @@ const toast = useToast();
 
 const wishi = computed(() => wishiStore.currentWishi);
 const isAdmin = computed(() => wishi.value?.is_admin);
-const cycles = computed(() => cycleStore.cycles);
+// Store already returns cycles newest-first; keep client sort as fallback so the
+// Overview shows the most recent cycle at the top.
+const cycles = computed(() => [...(cycleStore.cycles || [])].sort((a, b) => b.cycle_number - a.cycle_number));
 const currentCycle = computed(() => cycles.value.find((c) => c.cycle_number === wishi.value?.current_cycle));
 
 const pendingContribs = computed(() =>
@@ -236,8 +238,13 @@ function dueColor(days) {
                                     <span class="badge-gray capitalize">{{ c.mode }}</span>
                                     <span :class="c.status === 'completed' ? 'badge-success' : 'badge-info'" class="capitalize">{{ cycleStatusLabels[c.status] }}</span>
                                 </div>
-                                <div v-if="c.winner" class="text-xs text-gray-600 mt-0.5">
+                                <div v-if="c.selection_method === 'organizer_payout'" class="text-xs text-indigo-700 mt-0.5">
+                                    👑 <strong>{{ c.winner?.name || 'Admin' }}</strong> · Organizer payout
+                                    <span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span>
+                                </div>
+                                <div v-else-if="c.winner" class="text-xs text-gray-600 mt-0.5">
                                     🏆 <strong>{{ c.winner.name }}</strong>
+                                    <span v-if="c.winners_count > 1"> +{{ c.winners_count - 1 }} more</span>
                                     <span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span>
                                 </div>
                                 <div v-if="c.deferred_pending" class="text-[11px] text-amber-700 mt-0.5">

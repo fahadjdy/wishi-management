@@ -41,12 +41,60 @@ const payoutForm = reactive({ method: 'bank_transfer', reference: '', notes: '' 
 const paymentForm = reactive({ user_id: null, payment_method: 'upi', payment_reference: '', notes: '' });
 
 const showWinnerModal = ref(false);
+const showMultiWinnerModal = ref(false);
 const showSurplusModal = ref(false);
 const showPayoutModal = ref(false);
 const showPaymentModal = ref(false);
 const loading = ref(false);
 const countdown = ref('');
 let countdownTimer = null;
+
+// Multi-winner selection state
+const selectedBidIds = ref(new Set());
+const multiReason = ref('');
+const multiAcceptTopup = ref(false);
+
+function toggleBidSelection(tenderId) {
+    const next = new Set(selectedBidIds.value);
+    next.has(tenderId) ? next.delete(tenderId) : next.add(tenderId);
+    selectedBidIds.value = next;
+}
+
+const selectedBids = computed(() => tenderStore.tenders.filter((t) => selectedBidIds.value.has(t.id)));
+const selectedTotal = computed(() => selectedBids.value.reduce((s, b) => s + Number(b.bid_amount || 0), 0));
+const topupRequired = computed(() => Math.max(0, selectedTotal.value - Number(cycle.value?.total_pool || 0)));
+const surplusPending = computed(() => Math.max(0, Number(cycle.value?.total_pool || 0) - selectedTotal.value));
+
+async function confirmMultiWinners() {
+    if (selectedBidIds.value.size === 0) return toast.warning('Select at least one bid.');
+    if (topupRequired.value > 0 && !multiAcceptTopup.value) {
+        toast.warning(`You must confirm the admin top-up of ₹${topupRequired.value.toLocaleString('en-IN')}.`);
+        return;
+    }
+    loading.value = true;
+    try {
+        const response = await cycleStore.$axiosForDetail?.() || null; // placeholder no-op
+        const { data } = await (await import('@/api/client')).default.put(
+            `/wishis/${route.params.uuid}/cycles/${route.params.cycleId}/select-multi-winners`,
+            {
+                tender_ids: Array.from(selectedBidIds.value),
+                accept_topup: multiAcceptTopup.value,
+                reason: multiReason.value || null,
+            },
+        );
+        cycleStore.currentCycle = data.data;
+        toast.success(`${selectedBidIds.value.size} winner(s) selected.`);
+        showMultiWinnerModal.value = false;
+        selectedBidIds.value = new Set();
+        multiReason.value = '';
+        multiAcceptTopup.value = false;
+        await load();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Failed to select winners.');
+    } finally {
+        loading.value = false;
+    }
+}
 
 const stepperSteps = computed(() => {
     if (!cycle.value) return [];
@@ -261,31 +309,63 @@ const eligibleMembers = computed(() =>
                         <div v-else-if="cycle.tender_closes_at" class="text-sm text-gray-500">Closed {{ formatDateTime(cycle.tender_closes_at) }}</div>
                     </div>
 
-                    <div v-if="canBid" class="bg-indigo-50 rounded-xl p-4 mb-4">
+                    <!-- Member already placed bid → locked (cannot edit) -->
+                    <div v-if="myBid" class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+                        <div class="flex items-start gap-3">
+                            <div class="text-2xl">🔒</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-semibold text-emerald-900">Your bid is locked</div>
+                                <div class="text-sm text-emerald-800 mt-0.5">
+                                    You bid <strong>{{ formatINR(myBid.bid_amount) }}</strong>
+                                    <span v-if="myBid.placed_at"> on {{ formatDateTime(myBid.placed_at) }}</span>.
+                                </div>
+                                <div class="text-[11px] text-emerald-700 mt-1">Bids can't be changed once submitted. Results reveal after the window closes.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Member can still place (eligible, no prior bid) -->
+                    <div v-else-if="canBid" class="bg-indigo-50 rounded-xl p-4 mb-4">
                         <label class="form-label">Your bid (max {{ formatINR(cycle.total_pool) }})</label>
                         <div class="flex gap-2">
                             <input v-model.number="bidForm.amount" type="number" min="1" :max="cycle.total_pool" class="form-input flex-1" placeholder="Bid amount in ₹" />
-                            <button @click="placeBid" :disabled="loading" class="btn-primary">{{ myBid ? 'Update bid' : 'Place bid' }}</button>
+                            <button @click="placeBid" :disabled="loading" class="btn-primary">{{ loading ? 'Submitting…' : 'Place bid' }}</button>
                         </div>
-                        <p v-if="myBid" class="text-xs text-gray-600 mt-2">Your current bid: <strong>{{ formatINR(myBid.bid_amount) }}</strong></p>
-                        <p class="text-xs text-gray-500 mt-1">Lowest bid wins. Bids stay hidden until window closes.</p>
+                        <p class="text-xs text-amber-700 mt-2 font-medium">⚠ Once placed, your bid is final — it cannot be edited or withdrawn.</p>
+                        <p class="text-xs text-gray-500 mt-1">Lowest bid wins (or admin picks multiple). Bids stay hidden from other members until the window closes.</p>
                     </div>
 
+                    <!-- Non-admin view while bidding is still open: only the count is visible -->
                     <div v-if="tenderStore.meta && !tenderStore.meta.window_closed && !isAdmin">
                         <div class="text-center py-6 text-gray-500 text-sm">
                             <div class="font-semibold text-gray-700">{{ tenderStore.meta.bid_count }} bid{{ tenderStore.meta.bid_count !== 1 ? 's' : '' }} placed</div>
-                            <div class="text-xs mt-1">Amounts will be revealed after the window closes.</div>
+                            <div class="text-xs mt-1">Other members' amounts are hidden until the window closes.</div>
                         </div>
                     </div>
+
+                    <!-- Admin view OR post-close: full bid list with names + amounts -->
                     <div v-else>
-                        <div v-if="!tenderStore.tenders.length" class="text-center py-6 text-gray-400 text-sm">No bids placed.</div>
+                        <div v-if="isAdmin && tenderStore.tenders.length" class="mb-3 flex items-center justify-between text-xs text-gray-500">
+                            <span>{{ tenderStore.tenders.length }} bid{{ tenderStore.tenders.length !== 1 ? 's' : '' }} received · sorted by amount (low → high)</span>
+                            <span v-if="cycle.is_bidding_open" class="text-amber-600 font-medium">Bidding still open</span>
+                        </div>
+                        <div v-if="!tenderStore.tenders.length" class="text-center py-6 text-gray-400 text-sm">No bids placed yet.</div>
                         <ul v-else class="divide-y divide-gray-100">
-                            <li v-for="t in tenderStore.tenders" :key="t.id" class="py-3 flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <span v-if="t.is_winning_bid" class="badge-success">🏆 Winner</span>
-                                    <span class="font-medium">{{ t.user?.name || (t.user_id === auth.user?.id ? 'You' : '—') }}</span>
+                            <li v-for="t in tenderStore.tenders" :key="t.id" class="py-3 flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                                        {{ t.user?.name?.split(' ').map(p => p[0]).slice(0,2).join('') || '?' }}
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="font-medium truncate flex items-center gap-1.5">
+                                            {{ t.user?.name || (t.user_id === auth.user?.id ? 'You' : '—') }}
+                                            <span v-if="t.is_winning_bid" class="badge-success">🏆 Winner</span>
+                                            <span v-else-if="t.user_id === auth.user?.id" class="badge-info">You</span>
+                                        </div>
+                                        <div v-if="t.placed_at" class="text-[11px] text-gray-500">Placed {{ formatDateTime(t.placed_at) }}</div>
+                                    </div>
                                 </div>
-                                <div class="font-bold">{{ t.bid_amount ? formatINR(t.bid_amount) : '—' }}</div>
+                                <div class="font-bold shrink-0">{{ t.bid_amount ? formatINR(t.bid_amount) : '—' }}</div>
                             </li>
                         </ul>
                     </div>
@@ -356,9 +436,44 @@ const eligibleMembers = computed(() =>
 
             <div class="space-y-5">
                 <!-- Winner card -->
-                <div class="surface-padded">
-                    <h3 class="font-semibold mb-3">Winner</h3>
-                    <div v-if="cycle.winner" class="text-center py-3">
+                <div class="surface-padded" :class="cycle.selection_method === 'organizer_payout' ? 'bg-indigo-50 border-indigo-200' : ''">
+                    <h3 class="font-semibold mb-3">
+                        <span v-if="cycle.selection_method === 'organizer_payout'" class="text-indigo-900">👑 Organizer Payout</span>
+                        <span v-else>{{ cycle.winners_count > 1 ? `Winners (${cycle.winners_count})` : 'Winner' }}</span>
+                    </h3>
+
+                    <!-- Organizer cycle (always cycle #1) — admin receives the full pool -->
+                    <div v-if="cycle.selection_method === 'organizer_payout'" class="text-center py-3">
+                        <div class="text-5xl mb-2">👑</div>
+                        <div class="font-bold text-lg text-indigo-900">{{ cycle.winner?.name || 'Admin' }}</div>
+                        <div class="text-xs text-indigo-700">Cycle #1 · Organizer payout (cannot be changed)</div>
+                        <div class="mt-3 text-xs text-gray-500">Payout</div>
+                        <div class="text-2xl font-bold">{{ formatINR(cycle.payout_amount) }}</div>
+                        <p class="text-[11px] text-gray-500 mt-2">As per platform rule, the very first cycle of every WISHI goes to the admin. Members contribute but no one bids for cycle #1.</p>
+                    </div>
+
+                    <!-- Multi-winner display (tender with >1 winning bids) -->
+                    <div v-else-if="cycle.winners_count > 1">
+                        <ul class="divide-y divide-gray-100">
+                            <li v-for="t in tenderStore.tenders.filter((t) => t.is_winning_bid)" :key="t.id" class="py-2 flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="text-amber-500">🏆</span>
+                                    <span class="font-medium truncate">{{ t.user?.name || (t.user_id === auth.user?.id ? 'You' : '—') }}</span>
+                                </div>
+                                <div class="font-bold text-sm shrink-0">{{ formatINR(t.bid_amount) }}</div>
+                            </li>
+                        </ul>
+                        <div class="mt-3 pt-3 border-t border-gray-100 text-xs space-y-1">
+                            <div class="flex justify-between"><span class="text-gray-500">Pool</span><span>{{ formatINR(cycle.total_pool) }}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">Total payout</span><strong>{{ formatINR(cycle.payout_amount) }}</strong></div>
+                            <div v-if="cycle.admin_topup_amount > 0" class="flex justify-between text-amber-700">
+                                <span>💰 Admin top-up</span><strong>+{{ formatINR(cycle.admin_topup_amount) }}</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Single winner display -->
+                    <div v-else-if="cycle.winner" class="text-center py-3">
                         <div class="text-5xl mb-2">🏆</div>
                         <div class="font-bold text-lg">{{ cycle.winner.name }}</div>
                         <div class="text-sm text-gray-500">via {{ cycle.selection_method?.replace('_', ' ') }}</div>
@@ -369,9 +484,16 @@ const eligibleMembers = computed(() =>
                     </div>
                     <div v-else class="text-center py-4 text-gray-400 text-sm">No winner selected yet.</div>
 
-                    <button v-if="isAdmin && !cycle.winner && ['contribution_open','bidding_open','selection_pending'].includes(cycle.status)" @click="showWinnerModal = true" class="btn-primary w-full mt-3">
-                        Select winner
-                    </button>
+                    <!-- Action buttons when selection needed. Organizer cycle already has
+                         winner_id pre-set, so this block never fires for cycle #1. -->
+                    <div v-if="isAdmin && !cycle.winner && cycle.winners_count === 0 && cycle.selection_method !== 'organizer_payout' && ['contribution_open','bidding_open','selection_pending'].includes(cycle.status)" class="space-y-2 mt-3">
+                        <button @click="showWinnerModal = true" class="btn-primary w-full">
+                            Select single winner
+                        </button>
+                        <button v-if="cycle.mode === 'tender' && tenderStore.tenders.length > 0" @click="showMultiWinnerModal = true" class="btn-secondary w-full">
+                            Select multiple winners →
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Deferred amount (tender mode) -->
@@ -466,6 +588,58 @@ const eligibleMembers = computed(() =>
                 <div class="flex justify-end gap-2 mt-5">
                     <button @click="showWinnerModal = false" class="btn-secondary">Cancel</button>
                     <button @click="selectWinner" :disabled="loading" class="btn-primary">Select</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Multi-Winner Modal -->
+        <div v-if="showMultiWinnerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showMultiWinnerModal = false">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <h3 class="font-semibold text-lg mb-1">Select multiple winners</h3>
+                <p class="text-xs text-gray-500 mb-4">Tick the bids you want to accept. Any shortfall you cover personally is logged and shown on this cycle.</p>
+
+                <div class="space-y-2">
+                    <label v-for="t in tenderStore.tenders" :key="t.id"
+                        class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition"
+                        :class="selectedBidIds.has(t.id) ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300'"
+                    >
+                        <input type="checkbox" :checked="selectedBidIds.has(t.id)" @change="toggleBidSelection(t.id)" class="rounded text-indigo-600" />
+                        <div class="flex-1 min-w-0">
+                            <div class="font-medium truncate">{{ t.user?.name || 'Member' }}</div>
+                            <div class="text-xs text-gray-500">Bid placed {{ formatDateTime(t.placed_at) }}</div>
+                        </div>
+                        <div class="font-bold">{{ formatINR(t.bid_amount) }}</div>
+                    </label>
+                </div>
+
+                <div class="mt-4 p-4 rounded-xl" :class="topupRequired > 0 ? 'bg-amber-50 border border-amber-200' : (surplusPending > 0 ? 'bg-sky-50 border border-sky-200' : 'bg-emerald-50 border border-emerald-200')">
+                    <dl class="text-sm space-y-1">
+                        <div class="flex justify-between"><dt class="text-gray-600">Selected bids</dt><dd class="font-semibold">{{ selectedBidIds.size }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-600">Total of selected</dt><dd class="font-bold">{{ formatINR(selectedTotal) }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-600">Pool</dt><dd>{{ formatINR(cycle.total_pool) }}</dd></div>
+                        <div v-if="topupRequired > 0" class="flex justify-between text-amber-800 pt-1 border-t border-amber-200"><dt class="font-semibold">💰 Admin top-up (your pocket)</dt><dd class="font-bold">{{ formatINR(topupRequired) }}</dd></div>
+                        <div v-else-if="surplusPending > 0" class="flex justify-between text-sky-800 pt-1 border-t border-sky-200"><dt class="font-semibold">🔒 Deferred to winners</dt><dd class="font-bold">{{ formatINR(surplusPending) }}</dd></div>
+                        <div v-else class="text-emerald-800 pt-1 border-t border-emerald-200 text-center font-medium">✓ Exact match · no top-up, no deferred</div>
+                    </dl>
+                </div>
+
+                <label v-if="topupRequired > 0" class="flex items-start gap-2 mt-3 p-3 bg-amber-50 rounded-lg cursor-pointer">
+                    <input v-model="multiAcceptTopup" type="checkbox" class="rounded text-amber-600 mt-0.5" />
+                    <span class="text-xs text-amber-800">
+                        I agree to personally cover the ₹{{ Number(topupRequired).toLocaleString('en-IN') }} shortfall. This will be recorded on the cycle and visible in the audit log.
+                    </span>
+                </label>
+
+                <div>
+                    <label class="form-label mt-3">Reason (optional)</label>
+                    <textarea v-model="multiReason" rows="2" class="form-input" placeholder="Why these bids were accepted together…"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-5">
+                    <button @click="showMultiWinnerModal = false" class="btn-secondary">Cancel</button>
+                    <button @click="confirmMultiWinners" :disabled="loading || selectedBidIds.size === 0" class="btn-primary">
+                        {{ loading ? 'Confirming…' : `Confirm ${selectedBidIds.size} winner${selectedBidIds.size !== 1 ? 's' : ''}` }}
+                    </button>
                 </div>
             </div>
         </div>

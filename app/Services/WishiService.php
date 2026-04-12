@@ -21,16 +21,12 @@ class WishiService
         return DB::transaction(function () use ($creator, $data) {
             $wishi = Wishi::create(array_merge($data, [
                 'created_by' => $creator->id,
-                'status' => 'draft', // Always starts as draft, regardless of requested status
+                'status' => 'draft', // Always starts as draft; activation requires full member count
             ]));
 
-            WishiMember::create([
-                'wishi_id' => $wishi->id,
-                'user_id' => $creator->id,
-                'status' => 'active',
-                'is_admin' => true,
-                'joined_at' => now(),
-            ]);
+            // NOTE: admin is intentionally NOT added as a member. Admins manage the WISHI,
+            // they do not contribute, bid, or win. `total_members` refers exclusively to
+            // non-admin participants.
 
             $this->audit->log($wishi, $creator, 'wishi_created', "WISHI '{$wishi->name}' created", [
                 'total_members' => $wishi->total_members,

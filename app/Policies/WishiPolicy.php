@@ -44,15 +44,18 @@ class WishiPolicy
         return $this->isAdmin($user, $wishi);
     }
 
-    public function join(User $user, Wishi $wishi): bool
+    public function join(User $user, Wishi $wishi): \Illuminate\Auth\Access\Response
     {
-        if ($wishi->status !== 'active' && $wishi->status !== 'draft') {
-            return false;
+        if ($this->isAdmin($user, $wishi)) {
+            return \Illuminate\Auth\Access\Response::deny('Admins cannot join their own WISHI as a member.');
+        }
+        if (! in_array($wishi->status, ['active', 'draft'], true)) {
+            return \Illuminate\Auth\Access\Response::deny('This WISHI is not accepting members.');
         }
         if ($this->isMember($user, $wishi)) {
-            return false;
+            return \Illuminate\Auth\Access\Response::deny('You already have a membership or pending request.');
         }
-        return true;
+        return \Illuminate\Auth\Access\Response::allow();
     }
 
     protected function isAdmin(User $user, Wishi $wishi): bool

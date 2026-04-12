@@ -124,6 +124,105 @@ class WinnerSelectionService
         });
     }
 
+    /**
+     * Admin-driven multi-winner tender selection.
+     *
+     * Examples:
+     *   Pool ₹25,000. Bids: A=₹10k, B=₹15k. Admin picks both → total ₹25k == pool,
+     *   no topup, no surplus. Both members win this cycle and get their bid.
+     *
+     *   Pool ₹25,000. Bids: A=₹10k, B=₹7k, C=₹10k. Admin picks all three →
+     *   total ₹27k > pool. Admin personally tops up ₹2,000 (tracked on cycle).
+     *   All three win and receive their respective bid amounts.
+     *
+     *   If total < pool, the difference is deferred equally to the selected
+     *   winners and released on WISHI completion (consistent with single-winner rule).
+     */
+    public function selectTenderMultiWinner(Cycle $cycle, array $tenderIds, User $actor, ?string $reason = null): Cycle
+    {
+        return DB::transaction(function () use ($cycle, $tenderIds, $actor, $reason) {
+            $cycle = Cycle::whereKey($cycle->id)->lockForUpdate()->first();
+            if ($cycle->winner_id || $cycle->winners_count > 0) {
+                throw new \DomainException('Winners already selected for this cycle.');
+            }
+            if ($cycle->mode !== 'tender') {
+                throw new \DomainException('Multi-winner selection only applies to tender cycles.');
+            }
+            if ($cycle->tender_closes_at && $cycle->tender_closes_at->isFuture()) {
+                throw new \DomainException('Tender window has not closed yet.');
+            }
+            if (empty($tenderIds)) {
+                throw new \DomainException('Select at least one winning bid.');
+            }
+
+            $tenders = Tender::whereIn('id', $tenderIds)
+                ->where('cycle_id', $cycle->id)
+                ->with('user')
+                ->get();
+            if ($tenders->count() !== count($tenderIds)) {
+                throw new \DomainException('One or more bids do not belong to this cycle.');
+            }
+
+            foreach ($tenders as $t) {
+                $member = WishiMember::where('wishi_id', $cycle->wishi_id)
+                    ->where('user_id', $t->user_id)
+                    ->whereIn('status', ['approved', 'active'])
+                    ->first();
+                if (! $member || $member->has_won) {
+                    throw new \DomainException("Bidder {$t->user?->name} is not eligible (inactive, removed, or already won).");
+                }
+            }
+
+            $pool = (float) $cycle->total_pool;
+            $totalBids = (float) $tenders->sum('bid_amount');
+            $topup = max(0, $totalBids - $pool);
+            $surplus = max(0, $pool - $totalBids);
+
+            Tender::where('cycle_id', $cycle->id)->update(['is_winning_bid' => false]);
+            Tender::whereIn('id', $tenders->pluck('id'))->update(['is_winning_bid' => true]);
+
+            $cycle->update([
+                'winner_id' => $tenders->first()->user_id,
+                'winning_bid' => $tenders->first()->bid_amount,
+                'surplus' => $surplus,
+                'deferred_amount' => $surplus,
+                'surplus_action' => $surplus > 0 ? 'deferred_to_winner' : null,
+                'admin_topup_amount' => $topup,
+                'admin_topup_by_user_id' => $topup > 0 ? $actor->id : null,
+                'winners_count' => $tenders->count(),
+                'selection_method' => 'auto_tender',
+                'selected_at' => now(),
+                'payout_amount' => $totalBids,
+                'status' => 'selection_pending',
+            ]);
+
+            foreach ($tenders as $t) {
+                WishiMember::where('wishi_id', $cycle->wishi_id)
+                    ->where('user_id', $t->user_id)
+                    ->update(['has_won' => true, 'won_in_cycle' => $cycle->cycle_number]);
+            }
+
+            $this->audit->log($cycle->wishi, $actor, 'winners_selected',
+                sprintf('%d tender winners selected for cycle #%d (pool ₹%s, bids ₹%s, topup ₹%s, deferred ₹%s)',
+                    $tenders->count(), $cycle->cycle_number,
+                    number_format($pool, 2), number_format($totalBids, 2),
+                    number_format($topup, 2), number_format($surplus, 2)),
+                [
+                    'cycle_id' => $cycle->id,
+                    'cycle_number' => $cycle->cycle_number,
+                    'winners' => $tenders->map(fn ($t) => ['user_id' => $t->user_id, 'bid_amount' => (float) $t->bid_amount])->values()->all(),
+                    'pool' => $pool,
+                    'total_bids' => $totalBids,
+                    'admin_topup_amount' => $topup,
+                    'deferred_amount' => $surplus,
+                    'reason' => $reason,
+                ]
+            );
+
+            return $cycle->fresh();
+        });
+    }
+
     public function manualSelectWinner(Cycle $cycle, int $userId, User $actor, ?string $reason = null): Cycle
     {
         return DB::transaction(function () use ($cycle, $userId, $actor, $reason) {

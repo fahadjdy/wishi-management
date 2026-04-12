@@ -46,6 +46,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/wishis/{wishi}/cycles/next', [CycleController::class, 'next'])->middleware('throttle:sensitive');
         Route::get('/wishis/{wishi}/cycles/{cycle}', [CycleController::class, 'show']);
         Route::put('/wishis/{wishi}/cycles/{cycle}/select-winner', [CycleController::class, 'selectWinner'])->middleware('throttle:sensitive');
+        Route::put('/wishis/{wishi}/cycles/{cycle}/select-multi-winners', [CycleController::class, 'selectMultiWinners'])->middleware('throttle:sensitive');
         Route::put('/wishis/{wishi}/cycles/{cycle}/surplus', [CycleController::class, 'surplus'])->middleware('throttle:sensitive');
         Route::put('/wishis/{wishi}/cycles/{cycle}/payout', [CycleController::class, 'payout'])->middleware('throttle:sensitive');
 

@@ -20,7 +20,7 @@ return new class extends Migration
             $table->decimal('surplus', 12, 2)->default(0);
             $table->enum('surplus_action', ['distribute', 'reserve', 'admin_adjust', 'bonus', 'deferred_to_winner'])->nullable();
             $table->foreignId('surplus_recipient_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->enum('selection_method', ['auto_random', 'auto_tender', 'manual'])->nullable();
+            $table->enum('selection_method', ['auto_random', 'auto_tender', 'manual', 'organizer_payout'])->nullable();
             $table->string('selection_seed', 128)->nullable();
             $table->timestamp('selected_at')->nullable();
             $table->decimal('payout_amount', 14, 2)->nullable();

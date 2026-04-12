@@ -39,7 +39,12 @@ class CycleService
                 throw new \DomainException('All cycles for this WISHI are already complete.');
             }
 
-            $mode = $this->resolveCycleMode($wishi, $next);
+            // Cycle #1 is always the "organizer payout" — the admin receives the first
+            // pool. Members contribute but no one bids and no one else wins cycle #1.
+            // We force mode=random, pre-assign winner, and skip the selection step.
+            $isAdminCycle = ($next === 1);
+
+            $mode = $isAdminCycle ? 'random' : $this->resolveCycleMode($wishi, $next);
             $startDate = Carbon::parse($wishi->start_date)->addMonths($next - 1);
             $dueDate = $startDate->copy()->addDays(7);
 
@@ -55,7 +60,7 @@ class CycleService
                 }
             }
 
-            $cycle = Cycle::create([
+            $payload = [
                 'wishi_id' => $wishi->id,
                 'cycle_number' => $next,
                 'mode' => $mode,
@@ -64,15 +69,31 @@ class CycleService
                 'contribution_due_at' => $dueDate,
                 'tender_opens_at' => $tenderOpens,
                 'tender_closes_at' => $tenderCloses,
-            ]);
+            ];
+
+            if ($isAdminCycle) {
+                // Pre-assign admin as winner of cycle #1; no selection UI needed.
+                $payload['winner_id'] = $wishi->created_by;
+                $payload['payout_amount'] = $wishi->totalPool();
+                $payload['selection_method'] = 'organizer_payout';
+                $payload['selected_at'] = now();
+            }
+
+            $cycle = Cycle::create($payload);
 
             $this->bootstrapContributions($cycle, $wishi, $dueDate->toDateString());
 
             $wishi->update(['current_cycle' => $next]);
-            $this->audit->log($wishi, null, 'cycle_opened', "Cycle #{$next} opened ({$mode})", [
-                'cycle_number' => $next,
-                'mode' => $mode,
-            ]);
+            $this->audit->log($wishi, null, 'cycle_opened',
+                $isAdminCycle
+                    ? "Cycle #1 opened — organizer payout to admin"
+                    : "Cycle #{$next} opened ({$mode})",
+                [
+                    'cycle_number' => $next,
+                    'mode' => $mode,
+                    'organizer_cycle' => $isAdminCycle,
+                ]
+            );
 
             return $cycle;
         });
