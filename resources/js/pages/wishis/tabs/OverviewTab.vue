@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, reactive } from 'vue';
+import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useWishiStore } from '@/stores/wishi';
 import { useCycleStore } from '@/stores/cycle';
@@ -17,71 +17,9 @@ const toast = useToast();
 
 const wishi = computed(() => wishiStore.currentWishi);
 const isAdmin = computed(() => wishi.value?.is_admin);
-// Store already returns cycles newest-first; keep client sort as fallback so the
-// Overview shows the most recent cycle at the top.
 const cycles = computed(() => [...(cycleStore.cycles || [])].sort((a, b) => b.cycle_number - a.cycle_number));
 const currentCycle = computed(() => cycles.value.find((c) => c.cycle_number === wishi.value?.current_cycle));
-
-const pendingContribs = computed(() =>
-    (contribStore.contributions || []).filter((c) => !c.is_paid)
-);
-const myContribution = computed(() =>
-    (contribStore.contributions || []).find((c) => c.user_id === auth.user?.id)
-);
-
-const marking = ref(new Set()); // contribution IDs being marked
-
-// Quick-payment modal
-const showPayModal = ref(false);
-const payForm = reactive({
-    contribution: null,
-    payment_method: 'upi',
-    payment_reference: '',
-    notes: '',
-});
-
-function openPayModal(contribution) {
-    payForm.contribution = contribution;
-    payForm.payment_method = 'upi';
-    payForm.payment_reference = '';
-    payForm.notes = '';
-    showPayModal.value = true;
-}
-
-async function markPaid(contribution, opts = { openModal: true }) {
-    if (!contribution || contribution.is_paid) return;
-
-    // For own contribution we surface a proper modal asking for method + reference.
-    // For admin marking another member we default to cash (fast path).
-    if (opts.openModal && contribution.user_id === auth.user?.id) {
-        openPayModal(contribution);
-        return;
-    }
-
-    const payload = contribution.user_id === auth.user?.id
-        ? { payment_method: payForm.payment_method, payment_reference: payForm.payment_reference || null, notes: payForm.notes || null }
-        : { user_id: contribution.user_id, payment_method: 'cash' };
-
-    marking.value = new Set([...marking.value, contribution.id]);
-    try {
-        await contribStore.record(route.params.uuid, currentCycle.value.id, payload);
-        toast.success('Payment recorded.');
-        showPayModal.value = false;
-        // Refresh wishi so counts update in header
-        await wishiStore.fetch(route.params.uuid);
-    } catch (e) {
-        toast.error(e.response?.data?.message || 'Failed to record payment.');
-    } finally {
-        const next = new Set(marking.value);
-        next.delete(contribution.id);
-        marking.value = next;
-    }
-}
-
-async function confirmOwnPayment() {
-    if (!payForm.contribution) return;
-    await markPaid(payForm.contribution, { openModal: false });
-}
+const myContribution = computed(() => (contribStore.contributions || []).find((c) => c.user_id === auth.user?.id));
 
 async function advance() {
     if (!confirm('Advance to the next cycle? The current cycle must be completed.')) return;
@@ -139,35 +77,25 @@ function dueColor(days) {
                 </div>
             </div>
 
-            <!-- My own contribution banner (members) -->
-            <div v-if="myContribution && !myContribution.is_paid && currentCycle" class="surface-padded bg-amber-50 border-amber-200">
-                <div class="flex items-start justify-between gap-3 flex-wrap">
-                    <div class="min-w-0">
-                        <h3 class="font-semibold text-amber-900">💳 Your contribution is due</h3>
-                        <p class="text-sm text-amber-800 mt-0.5">
-                            <strong>{{ formatINR(myContribution.amount) }}</strong>
-                            · Cycle #{{ currentCycle.cycle_number }}
-                            · Due {{ formatDate(myContribution.due_date) }}
-                            <span :class="dueColor(daysUntil(myContribution.due_date))" class="font-medium">· {{ dueLabel(daysUntil(myContribution.due_date)) }}</span>
-                        </p>
-                    </div>
-                    <button
-                        @click="markPaid(myContribution)"
-                        :disabled="marking.has(myContribution.id)"
-                        class="btn-primary btn-sm shrink-0"
-                    >
-                        {{ marking.has(myContribution.id) ? 'Saving…' : 'Mark as paid' }}
-                    </button>
-                </div>
+            <!-- MEMBER: read-only own-contribution info, no buttons -->
+            <div v-if="!isAdmin && myContribution && !myContribution.is_paid && currentCycle" class="surface-padded bg-amber-50 border-amber-200">
+                <h3 class="font-semibold text-amber-900">💳 Your contribution is due</h3>
+                <p class="text-sm text-amber-800 mt-0.5">
+                    <strong>{{ formatINR(myContribution.amount) }}</strong>
+                    · Cycle #{{ currentCycle.cycle_number }}
+                    · Due {{ formatDate(myContribution.due_date) }}
+                    <span :class="dueColor(daysUntil(myContribution.due_date))" class="font-medium">· {{ dueLabel(daysUntil(myContribution.due_date)) }}</span>
+                </p>
+                <p class="text-[11px] text-amber-700 mt-1">Pay your WISHI admin directly. They'll mark it as received once the money reaches them.</p>
             </div>
-            <div v-else-if="myContribution && myContribution.is_paid && currentCycle" class="surface-padded bg-emerald-50 border-emerald-200">
+            <div v-else-if="!isAdmin && myContribution?.is_paid && currentCycle" class="surface-padded bg-emerald-50 border-emerald-200">
                 <div class="flex items-center gap-2 text-sm text-emerald-800">
                     <span>✓</span>
                     <span>You paid {{ formatINR(myContribution.amount) }} for cycle #{{ currentCycle.cycle_number }}<span v-if="myContribution.paid_at"> on {{ formatDate(myContribution.paid_at) }}</span><span v-if="myContribution.paid_late" class="text-amber-700"> (late)</span>.</span>
                 </div>
             </div>
 
-            <!-- Pending payments summary (admin view) -->
+            <!-- ADMIN: pending-payments summary (view-only; mark-paid lives on CycleDetail) -->
             <div v-if="isAdmin && currentCycle && contribStore.contributions.length" class="surface-padded">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h3 class="font-semibold">
@@ -176,47 +104,10 @@ function dueColor(days) {
                             · {{ contribStore.contributions.filter((c) => c.is_paid).length }} / {{ contribStore.contributions.length }} paid
                         </span>
                     </h3>
-                    <RouterLink :to="`/wishis/${wishi.uuid}/cycles/${currentCycle.id}`" class="text-xs text-indigo-600 hover:underline">Full detail →</RouterLink>
+                    <RouterLink :to="`/wishis/${wishi.uuid}/cycles/${currentCycle.id}`" class="text-xs text-indigo-600 hover:underline">Open cycle to record →</RouterLink>
                 </div>
-
-                <!-- Progress bar -->
                 <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
                     <div class="h-full bg-emerald-500 rounded-full transition-all" :style="{ width: Math.min(100, (contribStore.contributions.filter((c) => c.is_paid).length / contribStore.contributions.length) * 100) + '%' }"></div>
-                </div>
-
-                <!-- Pending list -->
-                <div v-if="!pendingContribs.length" class="text-center py-6 text-emerald-700 text-sm">
-                    🎉 Everyone has paid for this cycle.
-                </div>
-                <div v-else class="space-y-1.5">
-                    <div class="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1.5">
-                        {{ pendingContribs.length }} member{{ pendingContribs.length !== 1 ? 's' : '' }} still pending
-                    </div>
-                    <div v-for="c in pendingContribs" :key="c.id"
-                        class="flex items-center justify-between gap-2 py-2 px-3 rounded-lg border border-gray-100 hover:border-amber-300 hover:bg-amber-50/40 transition"
-                    >
-                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                {{ c.user?.name?.split(' ').map(p => p[0]).slice(0,2).join('') }}
-                            </div>
-                            <div class="min-w-0">
-                                <div class="text-sm font-medium truncate">{{ c.user?.name }}</div>
-                                <div class="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
-                                    <span>{{ formatINR(c.amount) }}</span>
-                                    <span>·</span>
-                                    <span :class="dueColor(daysUntil(c.due_date))">{{ dueLabel(daysUntil(c.due_date)) }}</span>
-                                    <span v-if="c.status === 'late'" class="badge-warning text-[10px]">Late</span>
-                                </div>
-                            </div>
-                        </div>
-                        <button
-                            @click="markPaid(c, { openModal: false })"
-                            :disabled="marking.has(c.id)"
-                            class="btn-success btn-sm shrink-0"
-                        >
-                            {{ marking.has(c.id) ? '…' : 'Mark paid' }}
-                        </button>
-                    </div>
                 </div>
             </div>
 
@@ -247,10 +138,10 @@ function dueColor(days) {
                                     <span v-if="c.winners_count > 1"> +{{ c.winners_count - 1 }} more</span>
                                     <span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span>
                                 </div>
-                                <div v-if="c.deferred_pending" class="text-[11px] text-amber-700 mt-0.5">
+                                <div v-if="isAdmin && c.deferred_pending" class="text-[11px] text-amber-700 mt-0.5">
                                     🔒 Deferred: {{ formatINR(c.deferred_amount) }} · releases when WISHI ends
                                 </div>
-                                <div v-else-if="c.deferred_released_at" class="text-[11px] text-emerald-700 mt-0.5">
+                                <div v-else-if="isAdmin && c.deferred_released_at" class="text-[11px] text-emerald-700 mt-0.5">
                                     ✓ Deferred {{ formatINR(c.deferred_amount) }} released on {{ formatDate(c.deferred_released_at) }}
                                 </div>
                             </div>
@@ -268,10 +159,11 @@ function dueColor(days) {
             <div class="surface-padded">
                 <h3 class="font-semibold mb-3">Quick info</h3>
                 <dl class="text-sm space-y-2">
-                    <div class="flex justify-between"><dt class="text-gray-500">Created by</dt><dd class="font-medium">{{ wishi.creator?.name || '—' }}</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">Selection</dt><dd class="font-medium capitalize">{{ wishi.winner_selection_mode }}</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">Approval</dt><dd class="font-medium">{{ wishi.require_approval ? 'Required' : 'Open' }}</dd></div>
-                    <div v-if="wishi.min_credit_score" class="flex justify-between"><dt class="text-gray-500">Min score</dt><dd class="font-medium">{{ wishi.min_credit_score }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Admin</dt><dd class="font-medium">{{ wishi.creator?.name || '—' }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Members</dt><dd class="font-medium">{{ wishi.active_members_count ?? '—' }} / {{ wishi.total_members }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Monthly</dt><dd class="font-medium">{{ formatINR(wishi.monthly_contribution) }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Pool</dt><dd class="font-medium">{{ formatINR(wishi.total_pool) }}</dd></div>
+                    <div v-if="isAdmin" class="flex justify-between"><dt class="text-gray-500">Approval</dt><dd class="font-medium">{{ wishi.require_approval ? 'Required' : 'Open' }}</dd></div>
                 </dl>
             </div>
 
@@ -280,10 +172,10 @@ function dueColor(days) {
                 <div class="flex flex-wrap gap-1.5">
                     <span v-for="(p, i) in wishi.hybrid_pattern" :key="i" class="badge-brand">{{ i + 1 }}. {{ p }}</span>
                 </div>
-                <p class="text-xs text-gray-500 mt-2">Repeats over {{ wishi.duration_months }} months: {{ wishi.auto_cycles_count }} auto + {{ wishi.tender_cycles_count }} tender.</p>
+                <p class="text-xs text-gray-500 mt-2">Over {{ wishi.duration_months }} months: {{ wishi.auto_cycles_count }} random + {{ wishi.tender_cycles_count }} tender cycles.</p>
             </div>
 
-            <div v-if="(wishi.deferred_pending_total + wishi.deferred_released_total) > 0" class="surface-padded">
+            <div v-if="isAdmin && ((wishi.deferred_pending_total || 0) + (wishi.deferred_released_total || 0)) > 0" class="surface-padded">
                 <h3 class="font-semibold mb-3">Deferred payouts</h3>
                 <div class="space-y-2 text-sm">
                     <div v-if="wishi.deferred_pending_total > 0" class="flex justify-between">
@@ -296,40 +188,6 @@ function dueColor(days) {
                     </div>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">Tender winners get the difference between the pool and their winning bid once the WISHI is fully complete.</p>
-            </div>
-        </div>
-
-        <!-- Own-payment modal -->
-        <div v-if="showPayModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showPayModal = false">
-            <div class="bg-white rounded-2xl p-6 w-full max-w-md">
-                <h3 class="font-semibold text-lg mb-1">Mark your contribution paid</h3>
-                <p class="text-xs text-gray-500 mb-4">
-                    <strong>{{ formatINR(payForm.contribution?.amount) }}</strong> for cycle #{{ currentCycle?.cycle_number }} · Due {{ formatDate(payForm.contribution?.due_date) }}
-                </p>
-                <div class="space-y-3">
-                    <div>
-                        <label class="form-label">Payment method</label>
-                        <select v-model="payForm.payment_method" class="form-input">
-                            <option value="upi">UPI</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                            <option value="cash">Cash</option>
-                            <option value="cheque">Cheque</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label">Reference / TXN ID</label>
-                        <input v-model="payForm.payment_reference" type="text" class="form-input" placeholder="e.g. UPI ref" />
-                    </div>
-                    <div>
-                        <label class="form-label">Notes (optional)</label>
-                        <textarea v-model="payForm.notes" rows="2" class="form-input"></textarea>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-2 mt-5">
-                    <button @click="showPayModal = false" class="btn-secondary">Cancel</button>
-                    <button @click="confirmOwnPayment" :disabled="payForm.contribution && marking.has(payForm.contribution.id)" class="btn-primary">Save</button>
-                </div>
             </div>
         </div>
     </div>

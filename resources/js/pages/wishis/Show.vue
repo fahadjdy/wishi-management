@@ -159,7 +159,10 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                         <span :class="statusBadge[wishi.status]" class="capitalize">{{ wishiStatusLabels[wishi.status] }}</span>
                         <span class="badge-brand capitalize">{{ wishi.cycle_type }} draws</span>
                         <span v-if="wishi.cycle_type === 'hybrid'" class="badge-gray">{{ wishi.auto_cycles_count }}A / {{ wishi.tender_cycles_count }}T</span>
-                        <span v-if="isAdmin" class="badge-info">You're admin</span>
+                        <span class="badge-info capitalize">
+                            {{ wishi.cycle_frequency || 'monthly' }}<span v-if="wishi.cycle_frequency === 'custom' && wishi.cycle_interval_days"> · every {{ wishi.cycle_interval_days }}d</span>
+                        </span>
+                        <span v-if="isAdmin" class="badge-brand">You're admin</span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-bold text-gray-900 truncate">{{ wishi.name }}</h1>
                     <p class="text-sm text-gray-500 mt-1">

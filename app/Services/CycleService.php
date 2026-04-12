@@ -13,6 +13,25 @@ class CycleService
 {
     public function __construct(protected AuditService $audit) {}
 
+    /**
+     * Compute the start-date of cycle N based on the WISHI's configured frequency.
+     * Supports daily / weekly / monthly / quarterly / yearly / custom (every N days).
+     */
+    protected function startDateForCycle(Wishi $wishi, int $cycleNumber): Carbon
+    {
+        $base = Carbon::parse($wishi->start_date);
+        $offset = $cycleNumber - 1;
+
+        return match ($wishi->cycle_frequency) {
+            'daily' => $base->copy()->addDays($offset),
+            'weekly' => $base->copy()->addWeeks($offset),
+            'quarterly' => $base->copy()->addMonthsNoOverflow(3 * $offset),
+            'yearly' => $base->copy()->addYearsNoOverflow($offset),
+            'custom' => $base->copy()->addDays($offset * max(1, (int) ($wishi->cycle_interval_days ?? 1))),
+            default => $base->copy()->addMonthsNoOverflow($offset),
+        };
+    }
+
     public function resolveCycleMode(Wishi $wishi, int $cycleNumber): string
     {
         if ($wishi->cycle_type === 'random') {
@@ -45,18 +64,28 @@ class CycleService
             $isAdminCycle = ($next === 1);
 
             $mode = $isAdminCycle ? 'random' : $this->resolveCycleMode($wishi, $next);
-            $startDate = Carbon::parse($wishi->start_date)->addMonths($next - 1);
-            $dueDate = $startDate->copy()->addDays(7);
+            $startDate = $this->startDateForCycle($wishi, $next);
+            // "Grace window" for contributions before the cycle matures. For fast cadences
+            // (daily / weekly) we shrink this so the cycle can actually close on time.
+            $graceDays = match ($wishi->cycle_frequency) {
+                'daily' => 0,
+                'weekly' => 2,
+                'custom' => min(2, max(0, (int) ($wishi->cycle_interval_days ?? 1) - 1)),
+                default => 7,
+            };
+            $dueDate = $startDate->copy()->addDays($graceDays);
 
             $tenderOpens = null;
             $tenderCloses = null;
             if ($mode === 'tender') {
-                $tenderOpens = $startDate->copy()
+                // Bidding window: opens `bidding_window_days` before the cycle's start date.
+                $windowDays = max(0, (int) ($wishi->bidding_window_days ?? 3));
+                $tenderOpens = $startDate->copy()->subDays($windowDays)
                     ->setTimeFromTimeString($wishi->tender_start_time ?: '10:00:00');
                 $tenderCloses = $startDate->copy()
                     ->setTimeFromTimeString($wishi->tender_end_time ?: '20:00:00');
                 if ($tenderCloses->lessThanOrEqualTo($tenderOpens)) {
-                    $tenderCloses->addDay();
+                    $tenderCloses = $tenderOpens->copy()->addDay();
                 }
             }
 

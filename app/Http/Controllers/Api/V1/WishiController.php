@@ -21,17 +21,71 @@ class WishiController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'status' => ['nullable', 'string', 'in:draft,active,completed,cancelled'],
+            'role' => ['nullable', 'string', 'in:admin,member'],
+            'cycle_type' => ['nullable', 'string', 'in:random,tender,hybrid'],
+            'sort' => ['nullable', 'string', 'in:newest,oldest,name'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         $user = $request->user();
-        $wishis = Wishi::query()
+        $q = Wishi::query()
             ->withCount(['members', 'activeMembers'])
-            ->with('creator')
-            ->where(function ($q) use ($user) {
-                $q->where('created_by', $user->id)
+            ->with('creator');
+
+        // Scope to wishis the user can see: either they created it, or they're a member.
+        $role = $request->input('role');
+        if ($role === 'admin') {
+            $q->where('created_by', $user->id);
+        } elseif ($role === 'member') {
+            $q->whereHas('members', fn ($m) => $m->where('user_id', $user->id)
+                ->whereIn('status', ['pending', 'approved', 'active']));
+        } else {
+            $q->where(function ($w) use ($user) {
+                $w->where('created_by', $user->id)
                     ->orWhereHas('members', fn ($m) => $m->where('user_id', $user->id)
                         ->whereIn('status', ['pending', 'approved', 'active']));
-            })
-            ->orderByDesc('created_at')
-            ->paginate(20);
+            });
+        }
+
+        if ($search = trim((string) $request->input('q'))) {
+            $q->where('name', 'like', '%' . $search . '%');
+        }
+        if ($status = $request->input('status')) {
+            $q->where('status', $status);
+        }
+        if ($cycleType = $request->input('cycle_type')) {
+            $q->where('cycle_type', $cycleType);
+        }
+
+        $sort = $request->input('sort', 'newest');
+        match ($sort) {
+            'oldest' => $q->orderBy('created_at'),
+            'name' => $q->orderBy('name'),
+            default => $q->orderByDesc('created_at'),
+        };
+
+        $wishis = $q->paginate(20)->withQueryString();
+
+        // Summary counts (pre-search, post-role scope) so the filter chips can show totals.
+        $baseCounts = Wishi::query();
+        if ($role === 'admin') {
+            $baseCounts->where('created_by', $user->id);
+        } elseif ($role === 'member') {
+            $baseCounts->whereHas('members', fn ($m) => $m->where('user_id', $user->id)->whereIn('status', ['pending', 'approved', 'active']));
+        } else {
+            $baseCounts->where(function ($w) use ($user) {
+                $w->where('created_by', $user->id)
+                    ->orWhereHas('members', fn ($m) => $m->where('user_id', $user->id)->whereIn('status', ['pending', 'approved', 'active']));
+            });
+        }
+        $summary = (clone $baseCounts)
+            ->selectRaw('status, count(*) as c')
+            ->groupBy('status')
+            ->pluck('c', 'status')
+            ->toArray();
 
         return response()->json([
             'data' => WishiResource::collection($wishis),
@@ -39,6 +93,14 @@ class WishiController extends Controller
                 'current_page' => $wishis->currentPage(),
                 'last_page' => $wishis->lastPage(),
                 'total' => $wishis->total(),
+                'per_page' => $wishis->perPage(),
+            ],
+            'counts' => [
+                'all' => (int) ($summary['draft'] ?? 0) + (int) ($summary['active'] ?? 0) + (int) ($summary['completed'] ?? 0) + (int) ($summary['cancelled'] ?? 0),
+                'draft' => (int) ($summary['draft'] ?? 0),
+                'active' => (int) ($summary['active'] ?? 0),
+                'completed' => (int) ($summary['completed'] ?? 0),
+                'cancelled' => (int) ($summary['cancelled'] ?? 0),
             ],
         ]);
     }

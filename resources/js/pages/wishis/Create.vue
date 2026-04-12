@@ -33,6 +33,10 @@ const form = reactive({
     total_members: 10,
     monthly_contribution: 5000,
     duration_months: 10,
+    cycle_frequency: 'monthly',
+    cycle_interval_days: 10,
+    cycle_day: '',
+    bidding_window_days: 3,
     start_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     auto_join: false,
     require_approval: true,
@@ -48,6 +52,25 @@ const form = reactive({
 });
 
 const totalPool = computed(() => Number(form.monthly_contribution || 0) * Number(form.total_members || 0));
+
+// Live human-readable duration estimate based on frequency × duration_months
+const totalDurationEstimate = computed(() => {
+    const n = Number(form.duration_months || 0);
+    if (!n) return '';
+    switch (form.cycle_frequency) {
+        case 'daily': return `${n} days`;
+        case 'weekly': return `${n} weeks (~${Math.round(n * 7 / 30)} months)`;
+        case 'monthly': return `${n} months`;
+        case 'quarterly': return `${n} quarters (${n * 3} months)`;
+        case 'yearly': return `${n} years`;
+        case 'custom': {
+            const every = Math.max(1, Number(form.cycle_interval_days || 1));
+            const days = n * every;
+            return `${n} cycles every ${every} day${every !== 1 ? 's' : ''} (~${days} days)`;
+        }
+        default: return `${n} cycles`;
+    }
+});
 
 function addPatternStep(value) {
     if (form.hybrid_pattern.length >= 24) return;
@@ -148,13 +171,14 @@ async function submit() {
                     <p v-if="errors.total_members" class="form-error">{{ errors.total_members[0] }}</p>
                 </div>
                 <div>
-                    <label class="form-label">Monthly contribution (₹)</label>
+                    <label class="form-label">Contribution amount per cycle (₹)</label>
                     <input v-model.number="form.monthly_contribution" type="number" min="1" class="form-input" />
                     <p v-if="errors.monthly_contribution" class="form-error">{{ errors.monthly_contribution[0] }}</p>
                 </div>
                 <div>
-                    <label class="form-label">Duration (months)</label>
+                    <label class="form-label">Total cycles</label>
                     <input v-model.number="form.duration_months" type="number" min="2" max="120" class="form-input" />
+                    <p class="text-[11px] text-gray-500 mt-1">One cycle per member. Cycle #1 goes to the admin (organizer payout), so set this to <code>members + 1</code> for everyone to win.</p>
                     <p v-if="errors.duration_months" class="form-error">{{ errors.duration_months[0] }}</p>
                 </div>
                 <div>
@@ -163,9 +187,41 @@ async function submit() {
                     <p v-if="errors.start_date" class="form-error">{{ errors.start_date[0] }}</p>
                 </div>
             </div>
-            <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 text-sm">
-                <div class="font-semibold text-indigo-900">Pool size: {{ formatINR(totalPool) }}</div>
-                <div class="text-indigo-700">Each member contributes {{ formatINR(form.monthly_contribution) }} for {{ form.duration_months }} months.</div>
+
+            <!-- Cycle frequency -->
+            <div class="border-t border-gray-100 pt-4 space-y-3">
+                <label class="form-label">Cycle frequency</label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                    <label v-for="opt in [
+                        { v: 'daily', t: 'Daily', e: 'every day' },
+                        { v: 'weekly', t: 'Weekly', e: 'every week' },
+                        { v: 'monthly', t: 'Monthly', e: 'every month' },
+                        { v: 'quarterly', t: 'Quarterly', e: 'every 3 months' },
+                        { v: 'yearly', t: 'Yearly', e: 'every year' },
+                        { v: 'custom', t: 'Custom', e: 'every N days' },
+                    ]" :key="opt.v" class="cursor-pointer">
+                        <input v-model="form.cycle_frequency" :value="opt.v" type="radio" class="sr-only peer" />
+                        <div class="border-2 rounded-lg p-2.5 text-center transition peer-checked:border-indigo-600 peer-checked:bg-indigo-50 border-gray-200">
+                            <div class="font-semibold text-sm">{{ opt.t }}</div>
+                            <div class="text-[10px] text-gray-500">{{ opt.e }}</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div v-if="form.cycle_frequency === 'custom'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="form-label">Every N days</label>
+                        <input v-model.number="form.cycle_interval_days" type="number" min="1" max="365" class="form-input" placeholder="e.g. 10" />
+                    </div>
+                </div>
+
+                <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 text-sm">
+                    <div class="font-semibold text-indigo-900">Pool size: {{ formatINR(totalPool) }}</div>
+                    <div class="text-indigo-700">
+                        Each member contributes {{ formatINR(form.monthly_contribution) }} per cycle.
+                        WISHI runs for <strong>{{ totalDurationEstimate }}</strong>.
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -257,14 +313,21 @@ async function submit() {
                 </div>
             </div>
 
-            <div v-if="form.cycle_type !== 'random'" class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="form-label">Tender opens at</label>
-                    <input v-model="form.tender_start_time" type="time" class="form-input" />
+            <div v-if="form.cycle_type !== 'random'" class="space-y-3">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label">Tender opens at</label>
+                        <input v-model="form.tender_start_time" type="time" class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Tender closes at</label>
+                        <input v-model="form.tender_end_time" type="time" class="form-input" />
+                    </div>
                 </div>
                 <div>
-                    <label class="form-label">Tender closes at</label>
-                    <input v-model="form.tender_end_time" type="time" class="form-input" />
+                    <label class="form-label">Bidding window (days before cycle)</label>
+                    <input v-model.number="form.bidding_window_days" type="number" min="0" max="30" class="form-input" />
+                    <p class="text-[11px] text-gray-500 mt-1">How many days before each tender cycle's start date the bidding window opens. 0 = same day.</p>
                 </div>
             </div>
 

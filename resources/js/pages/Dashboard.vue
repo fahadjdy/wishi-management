@@ -83,9 +83,9 @@ function urgencyLabel(days) {
                         </div>
                     </div>
                 </div>
-                <RouterLink v-if="nextPayment.wishi?.id" :to="`/wishis/${nextPayment.wishi.uuid || nextPayment.wishi.id}`" class="btn-primary shrink-0">
-                    Pay now →
-                </RouterLink>
+                <div class="text-right shrink-0 text-xs text-gray-500 italic max-w-[200px]">
+                    Pay the WISHI admin directly. They'll mark this as received.
+                </div>
             </div>
         </div>
 

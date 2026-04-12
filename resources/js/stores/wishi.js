@@ -5,16 +5,21 @@ export const useWishiStore = defineStore('wishi', {
     state: () => ({
         wishis: [],
         meta: null,
+        counts: null,
         currentWishi: null,
         loading: false,
     }),
     actions: {
-        async fetchAll() {
+        async fetchAll(params = {}) {
             this.loading = true;
             try {
-                const { data } = await api.get('/wishis');
+                const clean = Object.fromEntries(
+                    Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+                );
+                const { data } = await api.get('/wishis', { params: clean });
                 this.wishis = data.data;
                 this.meta = data.meta;
+                this.counts = data.counts || null;
             } finally {
                 this.loading = false;
             }
