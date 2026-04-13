@@ -50,6 +50,13 @@ export const useWishiStore = defineStore('wishi', {
             if (idx >= 0) this.wishis[idx] = data.data;
             return data.data;
         },
+        async publish(uuid) {
+            const { data } = await api.post(`/wishis/${uuid}/publish`);
+            this.currentWishi = data.data;
+            const idx = this.wishis.findIndex((w) => w.uuid === uuid);
+            if (idx >= 0) this.wishis[idx] = data.data;
+            return data.data;
+        },
         async join(uuid) {
             const { data } = await api.post(`/wishis/${uuid}/join`);
             return data;

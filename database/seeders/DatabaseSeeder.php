@@ -181,6 +181,7 @@ class DatabaseSeeder extends Seeder
 
     protected function attachMembers(Wishi $wishi, array $members, string $status = 'active'): void
     {
+        $nextToken = (int) WishiMember::where('wishi_id', $wishi->id)->max('token_no') + 1;
         foreach ($members as $user) {
             WishiMember::create([
                 'wishi_id' => $wishi->id,
@@ -188,6 +189,7 @@ class DatabaseSeeder extends Seeder
                 'status' => $status,
                 'is_admin' => false, // admins are never stored as members
                 'joined_at' => now()->subDays(rand(5, 180)),
+                'token_no' => in_array($status, ['approved', 'active'], true) ? $nextToken++ : null,
             ]);
         }
     }

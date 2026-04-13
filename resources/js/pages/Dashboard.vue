@@ -1,14 +1,34 @@
 <script setup>
-import { onMounted, computed } from 'vue';
+import { onMounted, computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useDashboardStore } from '@/stores/dashboard';
 import { useAuthStore } from '@/stores/auth';
+import { useWishiStore } from '@/stores/wishi';
+import { useToast } from 'vue-toastification';
 import { formatINR, formatDate, trustColor } from '@/utils/format';
 
 const dash = useDashboardStore();
 const auth = useAuthStore();
+const wishiStore = useWishiStore();
+const toast = useToast();
+const joiningUuid = ref(null);
 
 onMounted(() => dash.fetch());
+
+const joinableWishis = computed(() => dash.data?.joinable_wishis || []);
+
+async function requestJoin(uuid) {
+    joiningUuid.value = uuid;
+    try {
+        const res = await wishiStore.join(uuid);
+        toast.success(res.status === 'approved' ? 'You have joined.' : 'Join request sent to admin.');
+        await dash.fetch();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not send join request.');
+    } finally {
+        joiningUuid.value = null;
+    }
+}
 
 function daysUntil(dateStr) {
     if (!dateStr) return null;
@@ -23,6 +43,30 @@ const nextPayment = computed(() => {
     const list = dash.data?.upcoming_payments || [];
     return list.length ? list[0] : null;
 });
+
+const upcomingOpenings = computed(() => dash.data?.upcoming_wishi_openings || []);
+
+function openingLabel(days) {
+    if (days === null) return '';
+    if (days < 0) return `Overdue to open — ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} past start date`;
+    if (days === 0) return 'Opens today';
+    if (days === 1) return 'Opens tomorrow';
+    return `Opens in ${days} days`;
+}
+
+function openingClass(days) {
+    if (days === null) return 'bg-gray-50 border-gray-200';
+    if (days < 0) return 'bg-red-50 border-red-200';
+    if (days <= 1) return 'bg-amber-50 border-amber-200';
+    return 'bg-indigo-50 border-indigo-200';
+}
+
+function openingTextClass(days) {
+    if (days === null) return 'text-gray-500';
+    if (days < 0) return 'text-red-700';
+    if (days <= 1) return 'text-amber-700';
+    return 'text-indigo-700';
+}
 
 function urgencyClass(days) {
     if (days === null) return 'text-gray-500';
@@ -85,6 +129,79 @@ function urgencyLabel(days) {
                 </div>
                 <div class="text-right shrink-0 text-xs text-gray-500 italic max-w-[200px]">
                     Pay the WISHI admin directly. They'll mark this as received.
+                </div>
+            </div>
+        </div>
+
+        <!-- Upcoming WISHI openings (admin/creator view) -->
+        <div v-if="upcomingOpenings.length" class="space-y-3">
+            <RouterLink v-for="w in upcomingOpenings" :key="w.uuid"
+                :to="`/wishis/${w.uuid}`"
+                class="surface-padded block transition hover:shadow-md"
+                :class="openingClass(daysUntil(w.start_date))">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="flex items-start gap-3 min-w-0 flex-1">
+                        <div class="text-3xl">
+                            <span v-if="daysUntil(w.start_date) < 0">⚠️</span>
+                            <span v-else-if="daysUntil(w.start_date) <= 1">⏰</span>
+                            <span v-else>🚀</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-xs uppercase tracking-wider font-semibold" :class="openingTextClass(daysUntil(w.start_date))">
+                                Upcoming WISHI opening
+                            </div>
+                            <div class="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5 truncate">
+                                {{ w.name }} will {{ openingLabel(daysUntil(w.start_date)).toLowerCase() }}
+                            </div>
+                            <div class="flex items-center gap-2 mt-1.5 flex-wrap text-sm">
+                                <span :class="openingTextClass(daysUntil(w.start_date))" class="font-semibold">
+                                    {{ openingLabel(daysUntil(w.start_date)) }}
+                                </span>
+                                <span class="text-xs text-gray-500">· {{ formatDate(w.start_date) }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 mt-2 flex-wrap text-xs text-gray-600">
+                                <span class="badge-gray">{{ w.active_members }}/{{ w.total_members }} members</span>
+                                <span v-if="w.is_full" class="badge-success">Full — ready to start</span>
+                                <span v-else class="badge-warning">{{ w.total_members - w.active_members }} seat{{ w.total_members - w.active_members !== 1 ? 's' : '' }} left</span>
+                                <span class="text-gray-500">· {{ formatINR(w.monthly_contribution) }}/month · {{ w.duration_months }} cycles</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </RouterLink>
+        </div>
+
+        <!-- Discover WISHIs accepting members -->
+        <div v-if="joinableWishis.length" class="surface-padded">
+            <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div>
+                    <h2 class="text-lg font-semibold">Discover WISHIs</h2>
+                    <p class="text-xs text-gray-500">New WISHIs accepting members. Tap to view or request to join.</p>
+                </div>
+                <RouterLink to="/wishis?scope=discover" class="btn-ghost btn-sm">See all →</RouterLink>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div v-for="w in joinableWishis" :key="w.uuid" class="p-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition flex flex-col gap-2">
+                    <div class="flex items-start justify-between gap-2">
+                        <RouterLink :to="`/wishis/${w.uuid}`" class="font-semibold text-gray-900 hover:text-indigo-600 truncate">{{ w.name }}</RouterLink>
+                        <span v-if="w.status === 'draft'" class="badge-warning">Draft</span>
+                        <span v-else class="badge-success">Active</span>
+                    </div>
+                    <div class="text-xs text-gray-500">by {{ w.creator_name }}</div>
+                    <div class="text-sm text-gray-700">
+                        <span class="font-semibold">{{ formatINR(w.monthly_contribution) }}</span>/month · {{ w.duration_months }} cycles · <span class="capitalize">{{ w.cycle_type }}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                        <span class="badge-gray">{{ w.active_members }}/{{ w.total_members }} members</span>
+                        <span class="badge-info">{{ w.seats_left }} seat{{ w.seats_left !== 1 ? 's' : '' }} left</span>
+                        <span v-if="w.start_date" class="text-gray-500">· starts {{ formatDate(w.start_date) }}</span>
+                    </div>
+                    <div class="flex gap-2 mt-1">
+                        <button @click="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-primary btn-sm flex-1">
+                            {{ joiningUuid === w.uuid ? 'Sending…' : (w.require_approval ? 'Request to join' : 'Join now') }}
+                        </button>
+                        <RouterLink :to="`/wishis/${w.uuid}`" class="btn-secondary btn-sm">View</RouterLink>
+                    </div>
                 </div>
             </div>
         </div>

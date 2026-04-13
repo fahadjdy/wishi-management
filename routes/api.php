@@ -34,6 +34,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/wishis', [WishiController::class, 'store'])->middleware('throttle:sensitive');
         Route::get('/wishis/{wishi}', [WishiController::class, 'show']);
         Route::put('/wishis/{wishi}', [WishiController::class, 'update'])->middleware('throttle:sensitive');
+        Route::post('/wishis/{wishi}/publish', [WishiController::class, 'publish'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/activate', [WishiController::class, 'activate'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/join', [WishiController::class, 'join'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/invite', [WishiController::class, 'invite'])->middleware('throttle:sensitive');

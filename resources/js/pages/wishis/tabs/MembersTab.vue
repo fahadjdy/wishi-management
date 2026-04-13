@@ -82,6 +82,14 @@ async function remove(id) {
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
 }
 
+function onTimeColor(rate) {
+    if (rate == null) return 'text-gray-400';
+    if (rate >= 90) return 'text-emerald-600';
+    if (rate >= 70) return 'text-indigo-600';
+    if (rate >= 50) return 'text-amber-600';
+    return 'text-red-600';
+}
+
 const statusBadge = {
     pending: 'badge-warning',
     approved: 'badge-success',
@@ -136,13 +144,17 @@ const statusBadge = {
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-1.5 flex-wrap">
+                            <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-amber-100 text-amber-800 font-semibold text-[11px]">👑 #1</span>
+                            <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-[11px]">#{{ m.token_no }}</span>
                             <span class="font-medium">{{ m.user?.name }}</span>
-                            <span :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span>
-                            <span v-if="m.is_admin" class="badge-brand">Admin</span>
+                            <span v-if="m.is_organizer_virtual" class="badge-brand">Organizer · Cycle #1 payout</span>
+                            <span v-else :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span>
+                            <span v-if="m.is_admin && !m.is_organizer_virtual" class="badge-brand">Admin</span>
                         </div>
                         <div class="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                            <span>Credit {{ m.user?.credit_score }}</span>
+                            <span>Credit {{ m.user?.credit_score }}%</span>
                             <span :class="trustColor[m.user?.trust_level]" class="capitalize">{{ m.user?.trust_level }}</span>
+                            <span v-if="m.on_time_rate !== null && m.on_time_rate !== undefined" :class="onTimeColor(m.on_time_rate)" class="font-medium">On-time {{ m.on_time_rate }}%</span>
                             <span v-if="m.has_won" class="badge-success">🏆 Cycle #{{ m.won_in_cycle }}</span>
                         </div>
                         <div v-if="isAdmin" class="flex gap-1.5 mt-2 flex-wrap">
@@ -160,9 +172,11 @@ const statusBadge = {
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
                     <tr>
+                        <th class="text-left px-4 py-3">Token #</th>
                         <th class="text-left px-4 py-3">Member</th>
                         <th class="text-left px-4 py-3">Status</th>
                         <th class="text-left px-4 py-3">Credit</th>
+                        <th class="text-left px-4 py-3">On-time</th>
                         <th class="text-left px-4 py-3">Won this WISHI</th>
                         <th class="text-left px-4 py-3">Joined</th>
                         <th></th>
@@ -171,6 +185,11 @@ const statusBadge = {
                 <tbody class="divide-y divide-gray-100">
                     <template v-for="m in filtered" :key="m.id">
                         <tr class="hover:bg-gray-50 cursor-pointer" @click="toggle(m.id)">
+                            <td class="px-4 py-3">
+                                <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-amber-100 text-amber-800 font-semibold text-xs" title="Organizer — cycle #1 payout">👑 #1</span>
+                                <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-xs">#{{ m.token_no }}</span>
+                                <span v-else class="text-gray-300 text-xs">—</span>
+                            </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
                                     <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
@@ -191,12 +210,22 @@ const statusBadge = {
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3"><span :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span></td>
+                            <td class="px-4 py-3">
+                                <span v-if="m.is_organizer_virtual" class="badge-brand">👑 Organizer</span>
+                                <span v-else :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span>
+                            </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <span class="font-medium">{{ m.user?.credit_score }}</span>
+                                    <span class="font-medium">{{ m.user?.credit_score }}%</span>
                                     <span :class="trustColor[m.user?.trust_level]" class="capitalize">{{ m.user?.trust_level }}</span>
                                 </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div v-if="m.on_time_rate !== null && m.on_time_rate !== undefined" class="flex flex-col">
+                                    <span class="font-medium" :class="onTimeColor(m.on_time_rate)">{{ m.on_time_rate }}%</span>
+                                    <span class="text-[11px] text-gray-400">{{ m.on_time_count }}/{{ m.settled_count }} on-time</span>
+                                </div>
+                                <span v-else class="text-xs text-gray-400">—</span>
                             </td>
                             <td class="px-4 py-3">{{ m.has_won ? `Cycle #${m.won_in_cycle}` : '—' }}</td>
                             <td class="px-4 py-3 text-gray-500">{{ formatDate(m.joined_at) }}</td>
@@ -209,7 +238,7 @@ const statusBadge = {
                             </td>
                         </tr>
                         <tr v-if="expanded.has(m.id) && m.user?.wishi_history?.length" class="bg-indigo-50/30">
-                            <td colspan="6" class="px-4 py-3">
+                            <td colspan="8" class="px-4 py-3">
                                 <div class="text-xs font-semibold text-gray-700 mb-2">Active membership across the platform</div>
                                 <div class="space-y-1.5">
                                     <div v-for="h in m.user.wishi_history" :key="h.wishi_id" class="flex items-center gap-2 text-sm flex-wrap">

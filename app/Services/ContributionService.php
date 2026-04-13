@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Contribution;
 use App\Models\Cycle;
 use App\Models\User;
+use App\Notifications\PaymentApprovedNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -54,7 +55,10 @@ class ContributionService
 
             $this->maybeOpenSelection($contribution->cycle->fresh());
 
-            return $contribution->fresh();
+            $fresh = $contribution->fresh(['user', 'wishi', 'cycle']);
+            $fresh->user?->notify(new PaymentApprovedNotification($fresh));
+
+            return $fresh;
         });
     }
 

@@ -12,6 +12,20 @@ class WinnerSelectionService
 {
     public function __construct(protected AuditService $audit) {}
 
+    /**
+     * A cycle's winner cannot be announced before its maturity date (the
+     * cycle's `contribution_due_at`). Rule: "uski date jo h usi din ko
+     * option dikhega winner announcement ka" — winner option appears only
+     * on or after the due date.
+     */
+    protected function ensureCycleMature(Cycle $cycle): void
+    {
+        if ($cycle->contribution_due_at && $cycle->contribution_due_at->isFuture()) {
+            $date = $cycle->contribution_due_at->toDateString();
+            throw new \DomainException("Winner can only be announced on or after {$date}.");
+        }
+    }
+
     public function eligibleMembers(Cycle $cycle)
     {
         return $cycle->wishi->members()
@@ -28,6 +42,7 @@ class WinnerSelectionService
             if ($cycle->winner_id) {
                 throw new \DomainException('Winner already selected for this cycle.');
             }
+            $this->ensureCycleMature($cycle);
             $eligible = $this->eligibleMembers($cycle);
             if ($eligible->isEmpty()) {
                 throw new \DomainException('No eligible members remain to win.');
@@ -75,6 +90,7 @@ class WinnerSelectionService
             if ($cycle->tender_closes_at && $cycle->tender_closes_at->isFuture()) {
                 throw new \DomainException('Tender window has not closed yet.');
             }
+            $this->ensureCycleMature($cycle);
 
             $bids = $cycle->tenders()->orderBy('bid_amount', 'asc')->orderBy('placed_at', 'asc')->get();
             if ($bids->isEmpty()) {
@@ -151,6 +167,7 @@ class WinnerSelectionService
             if ($cycle->tender_closes_at && $cycle->tender_closes_at->isFuture()) {
                 throw new \DomainException('Tender window has not closed yet.');
             }
+            $this->ensureCycleMature($cycle);
             if (empty($tenderIds)) {
                 throw new \DomainException('Select at least one winning bid.');
             }
@@ -230,6 +247,7 @@ class WinnerSelectionService
             if ($cycle->winner_id) {
                 throw new \DomainException('Winner already selected for this cycle.');
             }
+            $this->ensureCycleMature($cycle);
             $member = WishiMember::where('wishi_id', $cycle->wishi_id)
                 ->where('user_id', $userId)
                 ->whereIn('status', ['approved', 'active'])

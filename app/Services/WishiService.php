@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\Wishi;
 use App\Models\WishiMember;
+use App\Notifications\WishiCreatedNotification;
 use App\Notifications\WishiStartedNotification;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
@@ -21,7 +23,10 @@ class WishiService
         return DB::transaction(function () use ($creator, $data) {
             $wishi = Wishi::create(array_merge($data, [
                 'created_by' => $creator->id,
-                'status' => 'draft', // Always starts as draft; activation requires full member count
+                // New WISHIs go straight to `planned` so members can discover and
+                // join immediately based on `require_approval`. `draft` is reserved
+                // for admin-initiated archive/pause; never the default on creation.
+                'status' => 'planned',
             ]));
 
             // NOTE: admin is intentionally NOT added as a member. Admins manage the WISHI,
@@ -34,6 +39,19 @@ class WishiService
                 'duration_months' => $wishi->duration_months,
                 'cycle_type' => $wishi->cycle_type,
             ]);
+
+            // Broadcast to every non-admin, non-creator user so they can discover
+            // and request to join. Platform admins and the wishi creator are excluded.
+            $recipients = User::where('is_admin', false)
+                ->where('id', '!=', $creator->id)
+                ->where(function ($q) {
+                    $q->whereNull('locked_until')->orWhere('locked_until', '<=', now());
+                })
+                ->get();
+
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, new WishiCreatedNotification($wishi));
+            }
 
             return $wishi->fresh();
         });
@@ -53,6 +71,37 @@ class WishiService
         });
     }
 
+    /**
+     * Move a WISHI from `draft` (admin-only) to `planned` (public — visible in
+     * the Discover list, members can request to join). Admins can still edit
+     * planned WISHIs until activation.
+     */
+    public function publish(Wishi $wishi, User $actor): Wishi
+    {
+        return DB::transaction(function () use ($wishi, $actor) {
+            $wishi = Wishi::whereKey($wishi->id)->lockForUpdate()->first();
+            if ($wishi->status !== 'draft') {
+                throw new \DomainException('Only draft WISHIs can be published.');
+            }
+            $wishi->update(['status' => 'planned']);
+            $this->audit->log($wishi, $actor, 'wishi_published', "WISHI '{$wishi->name}' published for discovery");
+
+            // Broadcast again on publish in case admin created this WISHI long before
+            // making it public — notifications from `create` may have grown stale.
+            $recipients = User::where('is_admin', false)
+                ->where('id', '!=', $wishi->created_by)
+                ->where(function ($q) {
+                    $q->whereNull('locked_until')->orWhere('locked_until', '<=', now());
+                })
+                ->get();
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, new WishiCreatedNotification($wishi));
+            }
+
+            return $wishi->fresh();
+        });
+    }
+
     public function activate(Wishi $wishi, User $actor): Wishi
     {
         return DB::transaction(function () use ($wishi, $actor) {
@@ -61,7 +110,7 @@ class WishiService
             if ($wishi->status === 'active') {
                 throw new \DomainException('This WISHI is already active.');
             }
-            if (in_array($wishi->status, ['completed', 'cancelled'], true)) {
+            if (! in_array($wishi->status, ['draft', 'planned'], true)) {
                 throw new \DomainException('This WISHI cannot be started from its current state.');
             }
 
@@ -74,10 +123,24 @@ class WishiService
                 );
             }
 
-            // On activation the planned start_date becomes today's date (concrete, from now on).
+            // WISHI cannot open before its planned start_date. Admin must wait until
+            // the date arrives before activating.
+            $plannedStart = $wishi->start_date ? Carbon::parse($wishi->start_date)->startOfDay() : null;
+            if ($plannedStart && $plannedStart->isFuture()) {
+                $days = (int) now()->startOfDay()->diffInDays($plannedStart);
+                throw new \DomainException(
+                    "WISHI cannot open before its planned start date ({$plannedStart->toDateString()}). It can be started in {$days} day(s)."
+                );
+            }
+
+            // Preserve the planned start_date if it matches today; otherwise stamp today.
+            $activationDate = $plannedStart && $plannedStart->isSameDay(now())
+                ? $plannedStart->toDateString()
+                : now()->toDateString();
+
             $wishi->update([
                 'status' => 'active',
-                'start_date' => now()->toDateString(),
+                'start_date' => $activationDate,
                 'current_cycle' => 0,
             ]);
 

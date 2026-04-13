@@ -35,7 +35,40 @@ class MemberController extends Controller
         }
 
         $members = $wishi->members()->with('user')->orderByDesc('created_at')->get();
-        return response()->json(['data' => WishiMemberResource::collection($members)]);
+        $payload = WishiMemberResource::collection($members)->resolve($request);
+
+        // Prepend the WISHI creator as a virtual "Member #1 (Admin)" entry. Admin
+        // is NOT stored in wishi_members (FLOW.md §6) but per product rule the
+        // organizer always appears first in the member list, marked as the
+        // cycle-#1 organizer-payout winner.
+        $creator = $wishi->creator()->first();
+        if ($creator) {
+            $firstCycle = $wishi->cycles()->where('cycle_number', 1)->first();
+            array_unshift($payload, [
+                'id' => 'admin-' . $creator->id,
+                'wishi_id' => $wishi->id,
+                'user_id' => $creator->id,
+                'status' => 'approved',
+                'is_admin' => true,
+                'is_organizer_virtual' => true,
+                'token_no' => null,
+                'on_time_rate' => null,
+                'on_time_count' => 0,
+                'settled_count' => 0,
+                'has_won' => (bool) ($firstCycle?->winner_id === $creator->id),
+                'won_in_cycle' => $firstCycle?->winner_id === $creator->id ? 1 : null,
+                'joined_at' => optional($wishi->created_at)?->toIso8601String(),
+                'user' => [
+                    'id' => $creator->id,
+                    'name' => $creator->name,
+                    'email' => $creator->email,
+                    'credit_score' => (int) $creator->credit_score,
+                    'trust_level' => $creator->trust_level,
+                ],
+            ]);
+        }
+
+        return response()->json(['data' => $payload]);
     }
 
     public function approve(Request $request, Wishi $wishi, WishiMember $member): JsonResponse

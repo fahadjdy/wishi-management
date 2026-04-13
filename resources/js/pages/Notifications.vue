@@ -1,10 +1,12 @@
 <script setup>
 import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useNotificationStore } from '@/stores/notification';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { formatDateTime, relativeTime } from '@/utils/format';
 
 const store = useNotificationStore();
+const router = useRouter();
 
 useBreadcrumbs(() => [{ label: 'Notifications' }]);
 
@@ -12,10 +14,32 @@ onMounted(() => store.fetch());
 
 const kindIcon = {
     payment_reminder: '💰',
+    payment_approved: '✅',
     winner_announced: '🎉',
     tender_window: '⏱',
     member_status: '👥',
+    member_joined: '🙋',
+    wishi_created: '✨',
+    wishi_started: '🚀',
+    wishi_full: '🎯',
 };
+
+function targetFor(n) {
+    const d = n?.data || {};
+    if (d.wishi_uuid) {
+        if (d.cycle_id && d.kind === 'payment_approved') {
+            return `/wishis/${d.wishi_uuid}/cycles/${d.cycle_id}`;
+        }
+        return `/wishis/${d.wishi_uuid}`;
+    }
+    return null;
+}
+
+async function openNotification(n) {
+    if (!n.read_at) await store.markRead(n.id);
+    const to = targetFor(n);
+    if (to) router.push(to);
+}
 </script>
 
 <template>
@@ -38,7 +62,7 @@ const kindIcon = {
             <li v-for="n in store.notifications" :key="n.id"
                 class="surface p-4 flex items-start gap-3 cursor-pointer hover:border-indigo-300"
                 :class="!n.read_at ? 'border-indigo-200 bg-indigo-50/30' : ''"
-                @click="!n.read_at && store.markRead(n.id)">
+                @click="openNotification(n)">
                 <div class="text-2xl">{{ kindIcon[n.data?.kind] || '🔔' }}</div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -46,6 +70,7 @@ const kindIcon = {
                         <span v-if="!n.read_at" class="w-2 h-2 bg-indigo-500 rounded-full"></span>
                     </div>
                     <p class="text-sm text-gray-600 mt-0.5">{{ n.data?.message }}</p>
+                    <div class="text-xs text-indigo-600 mt-1.5" v-if="targetFor(n)">Tap to open →</div>
                     <div class="text-xs text-gray-400 mt-1.5">{{ relativeTime(n.created_at) }} · {{ formatDateTime(n.created_at) }}</div>
                 </div>
             </li>

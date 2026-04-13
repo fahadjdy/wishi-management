@@ -23,8 +23,9 @@ class WishiController extends Controller
     {
         $request->validate([
             'q' => ['nullable', 'string', 'max:120'],
-            'status' => ['nullable', 'string', 'in:draft,active,completed,cancelled'],
+            'status' => ['nullable', 'string', 'in:draft,planned,active,completed,cancelled'],
             'role' => ['nullable', 'string', 'in:admin,member'],
+            'scope' => ['nullable', 'string', 'in:all,mine,discover'],
             'cycle_type' => ['nullable', 'string', 'in:random,tender,hybrid'],
             'sort' => ['nullable', 'string', 'in:newest,oldest,name'],
             'page' => ['nullable', 'integer', 'min:1'],
@@ -35,9 +36,33 @@ class WishiController extends Controller
             ->withCount(['members', 'activeMembers'])
             ->with('creator');
 
-        // Scope to wishis the user can see: either they created it, or they're a member.
+        // Default scope is `all` — the user's own WISHIs PLUS every joinable
+        // `planned` WISHI on the platform — so members never have to hunt for
+        // a tab to see WISHIs they could join.
+        $scope = $request->input('scope', 'all');
         $role = $request->input('role');
-        if ($role === 'admin') {
+
+        if ($scope === 'discover') {
+            // Open-to-join WISHIs only: `planned`, not mine, not already joined.
+            // Capacity filter is applied post-query (withCount + groupBy issues).
+            $q->where('status', 'planned')
+                ->where('created_by', '!=', $user->id)
+                ->whereDoesntHave('members', fn ($m) => $m->where('user_id', $user->id)
+                    ->whereIn('status', ['pending', 'approved', 'active']));
+        } elseif ($scope === 'all') {
+            // Mine + every joinable planned wishi.
+            $q->where(function ($w) use ($user) {
+                $w->where('created_by', $user->id)
+                    ->orWhereHas('members', fn ($m) => $m->where('user_id', $user->id)
+                        ->whereIn('status', ['pending', 'approved', 'active']))
+                    ->orWhere(function ($p) use ($user) {
+                        $p->where('status', 'planned')
+                            ->where('created_by', '!=', $user->id)
+                            ->whereDoesntHave('members', fn ($m) => $m->where('user_id', $user->id)
+                                ->whereIn('status', ['pending', 'approved', 'active']));
+                    });
+            });
+        } elseif ($role === 'admin') {
             $q->where('created_by', $user->id);
         } elseif ($role === 'member') {
             $q->whereHas('members', fn ($m) => $m->where('user_id', $user->id)
@@ -69,9 +94,41 @@ class WishiController extends Controller
 
         $wishis = $q->paginate(20)->withQueryString();
 
+        if (in_array($scope, ['discover', 'all'], true)) {
+            // For wishis the user hasn't joined, drop full ones (no seat to take).
+            // Joined / created wishis pass through regardless of capacity.
+            $userId = $user->id;
+            $filtered = $wishis->getCollection()->filter(function ($w) use ($userId) {
+                $isMineOrJoined = (int) $w->created_by === (int) $userId
+                    || $w->members()->where('user_id', $userId)
+                        ->whereIn('status', ['pending', 'approved', 'active'])
+                        ->exists();
+                if ($isMineOrJoined) return true;
+                return (int) $w->active_members_count < (int) $w->total_members;
+            })->values();
+            $wishis->setCollection($filtered);
+        }
+
         // Summary counts (pre-search, post-role scope) so the filter chips can show totals.
         $baseCounts = Wishi::query();
-        if ($role === 'admin') {
+        if ($scope === 'discover') {
+            $baseCounts->where('status', 'planned')
+                ->where('created_by', '!=', $user->id)
+                ->whereDoesntHave('members', fn ($m) => $m->where('user_id', $user->id)
+                    ->whereIn('status', ['pending', 'approved', 'active']));
+        } elseif ($scope === 'all') {
+            $baseCounts->where(function ($w) use ($user) {
+                $w->where('created_by', $user->id)
+                    ->orWhereHas('members', fn ($m) => $m->where('user_id', $user->id)
+                        ->whereIn('status', ['pending', 'approved', 'active']))
+                    ->orWhere(function ($p) use ($user) {
+                        $p->where('status', 'planned')
+                            ->where('created_by', '!=', $user->id)
+                            ->whereDoesntHave('members', fn ($m) => $m->where('user_id', $user->id)
+                                ->whereIn('status', ['pending', 'approved', 'active']));
+                    });
+            });
+        } elseif ($role === 'admin') {
             $baseCounts->where('created_by', $user->id);
         } elseif ($role === 'member') {
             $baseCounts->whereHas('members', fn ($m) => $m->where('user_id', $user->id)->whereIn('status', ['pending', 'approved', 'active']));
@@ -96,8 +153,9 @@ class WishiController extends Controller
                 'per_page' => $wishis->perPage(),
             ],
             'counts' => [
-                'all' => (int) ($summary['draft'] ?? 0) + (int) ($summary['active'] ?? 0) + (int) ($summary['completed'] ?? 0) + (int) ($summary['cancelled'] ?? 0),
+                'all' => (int) ($summary['draft'] ?? 0) + (int) ($summary['planned'] ?? 0) + (int) ($summary['active'] ?? 0) + (int) ($summary['completed'] ?? 0) + (int) ($summary['cancelled'] ?? 0),
                 'draft' => (int) ($summary['draft'] ?? 0),
+                'planned' => (int) ($summary['planned'] ?? 0),
                 'active' => (int) ($summary['active'] ?? 0),
                 'completed' => (int) ($summary['completed'] ?? 0),
                 'cancelled' => (int) ($summary['cancelled'] ?? 0),
@@ -131,6 +189,14 @@ class WishiController extends Controller
     {
         $this->authorize('update', $wishi);
         $updated = $this->service->activate($wishi, $request->user());
+        $updated->loadCount(['members', 'activeMembers'])->load('creator');
+        return response()->json(['data' => new WishiResource($updated)]);
+    }
+
+    public function publish(Request $request, Wishi $wishi): JsonResponse
+    {
+        $this->authorize('update', $wishi);
+        $updated = $this->service->publish($wishi, $request->user());
         $updated->loadCount(['members', 'activeMembers'])->load('creator');
         return response()->json(['data' => new WishiResource($updated)]);
     }

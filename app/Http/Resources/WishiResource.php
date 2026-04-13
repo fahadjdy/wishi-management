@@ -10,6 +10,15 @@ class WishiResource extends JsonResource
     {
         $user = $request->user();
         $isAdmin = $user && (int) $this->created_by === (int) $user->id;
+        $myMembership = $user && ! $isAdmin
+            ? $this->members()->where('user_id', $user->id)
+                ->whereIn('status', ['pending', 'approved', 'active'])
+                ->value('status')
+            : null;
+        $isMember = $myMembership !== null;
+        $canJoin = $user && ! $isAdmin && ! $isMember
+            && in_array($this->status, ['planned', 'active'], true)
+            && (int) $this->total_members > $this->activeMembers()->count();
 
         return [
             'id' => $this->id,
@@ -17,6 +26,9 @@ class WishiResource extends JsonResource
             'name' => $this->name,
             'created_by' => $this->created_by,
             'is_admin' => $isAdmin,
+            'is_member' => $isMember,
+            'my_membership_status' => $myMembership,
+            'can_join' => $canJoin,
             'total_members' => (int) $this->total_members,
             'monthly_contribution' => (float) $this->monthly_contribution,
             'total_pool' => (float) $this->totalPool(),

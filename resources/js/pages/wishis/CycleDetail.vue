@@ -34,6 +34,19 @@ const myContribution = computed(() => contribStore.contributions.find((c) => c.u
 const canBid = computed(() => cycle.value?.mode === 'tender' && cycle.value?.is_bidding_open && myMember.value && !myMember.value.has_won);
 const myBid = computed(() => tenderStore.tenders.find((t) => t.user_id === auth.user?.id));
 
+// Winner can only be announced on or after the cycle's contribution due date.
+const isCycleMature = computed(() => {
+    const due = cycle.value?.contribution_due_at;
+    if (!due) return true;
+    return new Date(due).getTime() <= Date.now();
+});
+const daysTillMature = computed(() => {
+    const due = cycle.value?.contribution_due_at;
+    if (!due) return null;
+    const ms = new Date(due).getTime() - Date.now();
+    return Math.max(0, Math.ceil(ms / 86400000));
+});
+
 const bidForm = reactive({ amount: null });
 const winnerForm = reactive({ method: 'auto', user_id: null, reason: '' });
 const surplusForm = reactive({ action: 'distribute', recipient_id: null, reason: '' });
@@ -484,14 +497,22 @@ const eligibleMembers = computed(() =>
                     <div v-else class="text-center py-4 text-gray-400 text-sm">No winner selected yet.</div>
 
                     <!-- Action buttons when selection needed. Organizer cycle already has
-                         winner_id pre-set, so this block never fires for cycle #1. -->
+                         winner_id pre-set, so this block never fires for cycle #1.
+                         Also gated on the cycle reaching its due date — the admin cannot
+                         announce a winner before the cycle matures. -->
                     <div v-if="isAdmin && !cycle.winner && cycle.winners_count === 0 && cycle.selection_method !== 'organizer_payout' && ['contribution_open','bidding_open','selection_pending'].includes(cycle.status)" class="space-y-2 mt-3">
-                        <button @click="showWinnerModal = true" class="btn-primary w-full">
-                            Select single winner
-                        </button>
-                        <button v-if="cycle.mode === 'tender' && tenderStore.tenders.length > 0" @click="showMultiWinnerModal = true" class="btn-secondary w-full">
-                            Select multiple winners →
-                        </button>
+                        <template v-if="isCycleMature">
+                            <button @click="showWinnerModal = true" class="btn-primary w-full">
+                                Select single winner
+                            </button>
+                            <button v-if="cycle.mode === 'tender' && tenderStore.tenders.length > 0" @click="showMultiWinnerModal = true" class="btn-secondary w-full">
+                                Select multiple winners →
+                            </button>
+                        </template>
+                        <div v-else class="p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm">
+                            <div class="font-semibold">⏳ Winner announcement locked</div>
+                            <div class="text-xs mt-1">Available on {{ formatDate(cycle.contribution_due_at) }} ({{ daysTillMature }} day{{ daysTillMature !== 1 ? 's' : '' }} left). Winners can only be chosen on or after the cycle's due date.</div>
+                        </div>
                     </div>
                 </div>
 

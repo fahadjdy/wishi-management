@@ -29,26 +29,39 @@ A digital chit-fund / committee / society platform. A **platform admin** creates
 ## 3. WISHI lifecycle
 
 ```
-[draft]  ──► (all seats filled)  ──►  admin clicks Start  ──►  [active]  ──►  (all cycles paid)  ──►  [completed]
-   │
-   └─►  admin cancels  ──►  [cancelled]
+admin creates ──► [planned]  ──► (all seats filled + start_date reached) ──► admin clicks Start  ──►  [active]  ──► [completed]
+                     │
+                     └─► admin cancels ──► [cancelled]
+
+[draft] is a manual-only state — admin can move a WISHI back to draft to pause discovery; never the default on create.
 ```
 
-| Status | Rules |
-|---|---|
-| `draft` | Members can still join. Start date is **not fixed** — it becomes today's date when admin activates. |
-| `active` | Cycles run monthly. Can't switch back to draft. |
-| `completed` | All cycles paid out. Deferred tender amounts auto-released here. |
-| `cancelled` | Pre-activation termination. No cycles created. |
+| Status | Visibility | Rules |
+|---|---|---|
+| `draft` | Admin-only | Manually paused/archived by the admin. Invisible to other users. (Not the default on creation.) |
+| `planned` | Public (discoverable) | **Default on `WishiService::create`.** Visible in every member's Discover list. Members can request/join based on `require_approval`. `start_date` is preserved — activation blocked until that date is reached. |
+| `active` | Joined members + admin | Cycles running. Can't switch back. |
+| `completed` | Joined members + admin | All cycles paid out. Deferred tender amounts auto-released here. |
+| `cancelled` | Joined members + admin | Pre-activation termination. No cycles created. |
+
+Member-facing UIs only show `planned`, `active`, `completed`, `cancelled` — and among the last three, only WISHIs the member actually joined. `draft` never leaks.
+
+### Creation broadcast
+- New WISHIs are created with `status='planned'` directly — no extra publish step is required.
+- On `WishiService::create`, every non-admin, non-creator platform user receives `WishiCreatedNotification` and the WISHI immediately surfaces on their Discover list.
+- `WishiService::publish` still exists for the rare manual draft → planned re-publish (e.g., after admin paused a WISHI back to draft) and re-broadcasts the notification when used.
 
 ### Activation rules
 - WISHI can only be started when `active_members_count == total_members`.
+- `WishiService::activate` accepts either `draft` or `planned`, so admins who skipped publish can still activate (the WISHI was just never discoverable).
+- **WISHI cannot open before its planned `start_date`.** `WishiService::activate` throws `DomainException` if `start_date` is in the future. On the admin's dashboard, every upcoming opening (≤ 5 days away, or past-due drafts) shows a prominent countdown card (`GET /dashboard` → `upcoming_wishi_openings`).
 - On activation:
   1. `status = active`
-  2. `start_date = today`
+  2. `start_date` is kept as the planned date (if it equals today) or stamped to today if activation happened late.
   3. Cycle #1 is created (organizer payout, see §6)
   4. All approved members receive a **WishiStartedNotification** with cycle #1 due date.
 - Admin receives **WishiFullNotification** the moment the last member is approved (idempotent — won't spam).
+- When a WISHI is **created**, every non-admin, non-creator user on the platform receives **WishiCreatedNotification** so they can discover and request to join.
 
 ---
 
@@ -77,7 +90,14 @@ Guards enforced in `MembershipService`:
 - Capacity check (can't exceed `total_members`).
 - `invite` skips credit/cap/missed-payment checks (admin has explicitly vetted the member by clicking Invite).
 
-Once accepted/approved, member gets a `MemberStatusNotification` in their inbox. The invitation carries a `MemberStatusNotification(status='invited')` push when sent.
+Once accepted/approved, member gets a `MemberStatusNotification` in their inbox. The invitation carries a `MemberStatusNotification(status='invited')` push when sent. In parallel, the WISHI admin (creator) receives a **MemberJoinedNotification** whenever:
+- a user posts a new join request (`event='requested'`),
+- a user accepts an admin invitation (`event='accepted_invite'`),
+- the admin approves a pending member (`event='joined'`).
+
+### Token numbers
+
+Every approved member is assigned a sequential `token_no` (1..n) on the `wishi_members` row, unique per WISHI. Assignment happens once — when the member first transitions to `approved` (via `requestJoin` auto-approve, `acceptInvite`, or admin `approve`). Tokens are stable: removal does **not** renumber remaining members, so gaps are allowed. The admin (creator) is never stored as a `wishi_members` row, so they hold no token. Surfaced in `WishiMemberResource` and the Members tab. `MembershipService::assignTokenIfMissing()` locks the WISHI row while computing `max(token_no)+1` to make concurrent approvals safe.
 
 ### Admin-created accounts
 
@@ -120,6 +140,7 @@ contribution_open  ──► (all members paid) ──►  selection_pending ─
 - `CyclePolicy::selectWinner` denies any attempt to re-select cycle #1.
 - `CyclePolicy::placeBid` denies bidding on cycle #1.
 - UI: 👑 "Organizer Payout" badge, winner shown as admin, no "Select winner" or "Place bid" buttons.
+- **Members tab** prepends the admin as a virtual "Member #1 (👑 Organizer)" row (flag `is_organizer_virtual=true` on the API payload) — admin appears first in the list even though they are still not stored in `wishi_members`. Real member tokens remain 1..n as assigned to approved members.
 
 This is why a WISHI with `total_members = 6` and `duration_months = 6` ends up with admin winning one cycle and 5 members winning the remaining 5. If the admin wants every member to get a turn, they should set `duration_months = total_members + 1`.
 
@@ -163,15 +184,17 @@ So "first 2 random, then 1 tender" repeats three times across 9 months → 3 ten
 
 1. Cycle opens → `contribution_open`. A `contributions` row is created for every approved/active member. Admin is **not** in this list.
 2. Payments are always recorded **by the admin** via `POST /contributions` with the target `user_id`. Members cannot self-report payments — they pay the admin out-of-band (cash/UPI/bank transfer) and the admin marks it received.
-3. Payment validation in `ContributionService::recordPayment`:
+3. **Due-date rule:** A cycle's `contribution_due_at` equals the cycle's own start date (no extra grace is added). For monthly cycles this means the due date is exactly one month after the previous cycle — never more than 30 days out. This is enforced in `CycleService::createNextCycle`.
+4. Payment validation in `ContributionService::recordPayment`:
    - If paid ≤ 2 days before due → `early_payment` (+15 credit)
    - If paid on/before due → `on_time_payment` (+10)
    - If paid after due → `late_payment` (-5) and status flagged `late`
-4. When every contribution has `paid_at` set, cycle auto-advances:
+5. On admin marking a contribution paid, the paying member is notified via `PaymentApprovedNotification` (database channel) — "Your ₹X payment for cycle #N has been approved."
+6. When every contribution has `paid_at` set, cycle auto-advances:
    - If `mode = tender` → `bidding_open`
    - Else → `selection_pending`
-5. Scheduler command `wishi:check-payments` runs daily → marks unpaid past-due contributions as `late` and applies -5 credit.
-6. `wishi:mark-missed` (after 14-day grace by default) marks them `missed` and applies -20 credit.
+7. Scheduler command `wishi:check-payments` runs daily → marks unpaid past-due contributions as `late` and applies -5 credit.
+8. `wishi:mark-missed` (after 14-day grace by default) marks them `missed` and applies -20 credit.
 
 **Canonical paid indicator:** `paid_at IS NOT NULL` (NOT `status`, because `status='late'` is ambiguous — could mean "unpaid overdue" or "paid after due").
 
@@ -179,8 +202,22 @@ So "first 2 random, then 1 tender" repeats three times across 9 months → 3 ten
 
 ## 10. Winner selection
 
+### Maturity guard (all modes)
+
+Winner announcement is **locked until the cycle's `contribution_due_at` is reached**. `WinnerSelectionService::ensureCycleMature` is called at the start of `selectRandomWinner`, `selectTenderWinner`, `selectTenderMultiWinner`, and `manualSelectWinner` — any attempt before the due date throws `DomainException("Winner can only be announced on or after {date}")`. The CycleDetail UI mirrors this: the "Select winner" button is replaced by a countdown card ("⏳ Winner announcement locked — available on <date> (N days left)") until the cycle matures. Cycle #1 is exempt because its winner is pre-assigned at creation.
+
 ### Random mode
 `WinnerSelectionService::selectRandomWinner` — picks uniformly from eligible members (active, not yet won). Uses `random_bytes(32)` for the seed, stores the seed on the cycle so the draw is verifiable.
+
+### Tender bidding window (all tender cycles)
+
+Bidding is a **single-day** window, opening and closing on the cycle's own start date:
+
+- **Opens** at `wishi.tender_start_time` (default `06:00`) on the cycle's start date.
+- **Closes** at `wishi.tender_end_time` (default `20:00`) on the same date.
+- Both times are configured once on the WISHI and reused for every tender cycle.
+
+Example: WISHI starts 1-Jan-2026 (cycle #1 is the organizer payout). Cycle #2 starts 1-Feb-2026 — bidding opens at 06:00 on 1-Feb-2026 and closes at 20:00 on 1-Feb-2026. After close, no new bids are accepted; the admin can declare the winner (either auto-lowest via `selectTenderWinner` or manual/multi via `selectTenderMultiWinner`) but only after the `contribution_due_at` maturity guard allows it (see §10 maturity guard).
 
 ### Tender mode — single winner
 `WinnerSelectionService::selectTenderWinner` — picks the lowest bid, stores surplus as `deferred_amount`.

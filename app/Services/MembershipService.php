@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\Wishi;
 use App\Models\WishiMember;
+use App\Notifications\MemberJoinedNotification;
 use App\Notifications\MemberStatusNotification;
 use App\Notifications\WishiFullNotification;
 use Illuminate\Support\Facades\DB;
@@ -35,10 +36,22 @@ class MembershipService
                     'joined_at' => $status === 'approved' ? now() : null,
                 ]);
 
+            if ($status === 'approved') {
+                $this->assignTokenIfMissing($member);
+            }
+
             $this->audit->log($wishi, $user, 'member_join_requested', "User #{$user->id} requested to join", [
                 'user_id' => $user->id,
                 'auto_approved' => $status === 'approved',
             ]);
+
+            // Notify admin: either a new join request (needs approval) or someone
+            // just auto-joined (no approval needed).
+            $wishi->creator?->notify(new MemberJoinedNotification(
+                $wishi,
+                $user,
+                $status === 'approved' ? 'joined' : 'requested',
+            ));
 
             // If auto-approved, also check if we just hit capacity
             if ($status === 'approved') {
@@ -58,7 +71,7 @@ class MembershipService
         if ((int) $wishi->created_by === (int) $user->id) {
             throw new \DomainException('Admins cannot be invited as members of their own WISHI.');
         }
-        if (in_array($wishi->status, ['completed', 'cancelled'], true)) {
+        if (! in_array($wishi->status, ['planned', 'active', 'draft'], true)) {
             throw new \DomainException('This WISHI is no longer accepting members.');
         }
         if ($wishi->activeMembers()->count() >= (int) $wishi->total_members) {
@@ -107,8 +120,12 @@ class MembershipService
         }
         return DB::transaction(function () use ($member, $user) {
             $member->update(['status' => 'approved', 'joined_at' => now()]);
+            $this->assignTokenIfMissing($member);
             $this->audit->log($member->wishi, $user, 'invite_accepted', 'User accepted admin invitation',
                 ['user_id' => $user->id]);
+            $member->wishi->creator?->notify(new MemberJoinedNotification(
+                $member->wishi, $user, 'accepted_invite'
+            ));
             $this->notifyIfJustFilled($member->wishi->fresh());
             return $member->fresh();
         });
@@ -143,12 +160,20 @@ class MembershipService
                 'status' => 'approved',
                 'joined_at' => $member->joined_at ?? now(),
             ]);
+            $this->assignTokenIfMissing($member);
             $this->audit->log($member->wishi, $actor, 'member_approved', "Member #{$member->user_id} approved", [
                 'member_user_id' => $member->user_id,
             ]);
 
             // Notify the member themselves
             $member->user?->notify(new MemberStatusNotification($member->wishi, 'approved'));
+
+            // Notify the admin that a new member is in.
+            if ($member->user) {
+                $member->wishi->creator?->notify(new MemberJoinedNotification(
+                    $member->wishi, $member->user, 'joined'
+                ));
+            }
 
             // Notify the admin if this approval just filled the WISHI
             $this->notifyIfJustFilled($member->wishi->fresh());
@@ -182,13 +207,31 @@ class MembershipService
         return $member;
     }
 
+    /**
+     * Assign the next sequential token_no (1..n) for an approved member.
+     * No-op if the member already has a token. Locks the wishi row to
+     * serialize concurrent approvals so tokens stay dense and unique.
+     */
+    protected function assignTokenIfMissing(WishiMember $member): void
+    {
+        if ($member->token_no) {
+            return;
+        }
+        DB::transaction(function () use ($member) {
+            Wishi::whereKey($member->wishi_id)->lockForUpdate()->first();
+            $next = (int) WishiMember::where('wishi_id', $member->wishi_id)
+                ->max('token_no') + 1;
+            $member->update(['token_no' => $next]);
+        });
+    }
+
     protected function guardEligibility(Wishi $wishi, User $user): void
     {
         if ((int) $wishi->created_by === (int) $user->id) {
             throw new \DomainException('Admins cannot join their own WISHI as a member.');
         }
 
-        if ($wishi->status === 'completed' || $wishi->status === 'cancelled') {
+        if (! in_array($wishi->status, ['planned', 'active', 'draft'], true)) {
             throw new \DomainException('This WISHI is no longer accepting members.');
         }
 

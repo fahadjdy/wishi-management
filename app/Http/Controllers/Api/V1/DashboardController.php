@@ -41,6 +41,57 @@ class DashboardController extends Controller
 
         $createdCount = Wishi::where('created_by', $user->id)->where('status', 'active')->count();
 
+        // Open-to-join WISHIs the user hasn't joined or requested yet. Surfaced on
+        // the dashboard so a newly-published WISHI is immediately discoverable.
+        // Only `planned` status is publicly visible — `draft` stays admin-only.
+        $joinable = Wishi::where('status', 'planned')
+            ->where('created_by', '!=', $user->id)
+            ->whereDoesntHave('members', fn ($m) => $m->where('user_id', $user->id)
+                ->whereIn('status', ['pending', 'approved', 'active']))
+            ->withCount('activeMembers')
+            ->with('creator:id,name')
+            ->latest()
+            ->limit(12)
+            ->get()
+            ->filter(fn ($w) => (int) $w->active_members_count < (int) $w->total_members)
+            ->map(fn ($w) => [
+                'uuid' => $w->uuid,
+                'name' => $w->name,
+                'creator_name' => $w->creator?->name,
+                'monthly_contribution' => (float) $w->monthly_contribution,
+                'total_members' => (int) $w->total_members,
+                'active_members' => (int) $w->active_members_count,
+                'seats_left' => max(0, (int) $w->total_members - (int) $w->active_members_count),
+                'duration_months' => (int) $w->duration_months,
+                'cycle_type' => $w->cycle_type,
+                'start_date' => optional($w->start_date)?->toDateString(),
+                'status' => $w->status,
+                'require_approval' => (bool) $w->require_approval,
+            ])
+            ->values();
+
+        // WISHIs this user created that are about to open (within 5 days) or
+        // are already past start_date but still in draft — admin needs to act.
+        $upcomingOpenings = Wishi::where('created_by', $user->id)
+            ->where('status', 'draft')
+            ->whereNotNull('start_date')
+            ->where('start_date', '<=', now()->addDays(5)->toDateString())
+            ->orderBy('start_date')
+            ->get(['id', 'uuid', 'name', 'start_date', 'total_members', 'monthly_contribution', 'duration_months'])
+            ->map(function ($w) {
+                $activeMembers = $w->activeMembers()->count();
+                return [
+                    'uuid' => $w->uuid,
+                    'name' => $w->name,
+                    'start_date' => $w->start_date?->toDateString(),
+                    'total_members' => (int) $w->total_members,
+                    'active_members' => $activeMembers,
+                    'monthly_contribution' => (float) $w->monthly_contribution,
+                    'duration_months' => (int) $w->duration_months,
+                    'is_full' => $activeMembers >= (int) $w->total_members,
+                ];
+            })->values();
+
         // Pending admin invitations the member needs to accept / decline
         $invitations = WishiMember::where('user_id', $user->id)
             ->where('status', 'pending')
@@ -89,6 +140,8 @@ class DashboardController extends Controller
             'active_cycles_count' => $cyclesActive,
             'upcoming_total_dues' => $upcomingTotal,
             'pending_invitations' => $invitations,
+            'upcoming_wishi_openings' => $upcomingOpenings,
+            'joinable_wishis' => $joinable,
             'joined_wishis' => $joinedWishis,
             'upcoming_payments' => $upcomingPayments->map(fn ($c) => [
                 'id' => $c->id,

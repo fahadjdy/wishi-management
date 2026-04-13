@@ -65,27 +65,25 @@ class CycleService
 
             $mode = $isAdminCycle ? 'random' : $this->resolveCycleMode($wishi, $next);
             $startDate = $this->startDateForCycle($wishi, $next);
-            // "Grace window" for contributions before the cycle matures. For fast cadences
-            // (daily / weekly) we shrink this so the cycle can actually close on time.
-            $graceDays = match ($wishi->cycle_frequency) {
-                'daily' => 0,
-                'weekly' => 2,
-                'custom' => min(2, max(0, (int) ($wishi->cycle_interval_days ?? 1) - 1)),
-                default => 7,
-            };
-            $dueDate = $startDate->copy()->addDays($graceDays);
+            // Due date is the cycle's own start date — members must pay on or before it.
+            // No grace is added to the due date itself (that would push monthly due dates
+            // past 30 days, violating the one-cycle-period invariant). Post-due-date
+            // tolerance is handled separately by the `wishi:mark-missed` scheduler.
+            $dueDate = $startDate->copy();
 
             $tenderOpens = null;
             $tenderCloses = null;
             if ($mode === 'tender') {
-                // Bidding window: opens `bidding_window_days` before the cycle's start date.
-                $windowDays = max(0, (int) ($wishi->bidding_window_days ?? 3));
-                $tenderOpens = $startDate->copy()->subDays($windowDays)
-                    ->setTimeFromTimeString($wishi->tender_start_time ?: '10:00:00');
+                // Bidding window: opens at the WISHI's configured `tender_start_time`
+                // (default 06:00) on the cycle's own start date, and closes the same
+                // day at `tender_end_time` (default 20:00). Single-day window.
+                $tenderOpens = $startDate->copy()
+                    ->setTimeFromTimeString($wishi->tender_start_time ?: '06:00:00');
                 $tenderCloses = $startDate->copy()
                     ->setTimeFromTimeString($wishi->tender_end_time ?: '20:00:00');
                 if ($tenderCloses->lessThanOrEqualTo($tenderOpens)) {
-                    $tenderCloses = $tenderOpens->copy()->addDay();
+                    // Guard against misconfigured times — ensure close is strictly after open.
+                    $tenderCloses = $tenderOpens->copy()->addHours(1);
                 }
             }
 

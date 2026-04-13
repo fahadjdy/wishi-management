@@ -14,7 +14,13 @@ class WishiPolicy
 
     public function view(User $user, Wishi $wishi): bool
     {
-        return $this->isAdmin($user, $wishi) || $this->isMember($user, $wishi);
+        if ($this->isAdmin($user, $wishi) || $this->isMember($user, $wishi)) {
+            return true;
+        }
+        // Discovery: non-members may only see WISHIs in the `planned` state.
+        // `draft` stays admin-only, and `active`/`completed`/`cancelled` are
+        // visible only to the admin or members who actually joined.
+        return $wishi->status === 'planned';
     }
 
     public function create(User $user): \Illuminate\Auth\Access\Response
@@ -49,7 +55,7 @@ class WishiPolicy
         if ($this->isAdmin($user, $wishi)) {
             return \Illuminate\Auth\Access\Response::deny('Admins cannot join their own WISHI as a member.');
         }
-        if (! in_array($wishi->status, ['active', 'draft'], true)) {
+        if (! in_array($wishi->status, ['planned', 'active'], true)) {
             return \Illuminate\Auth\Access\Response::deny('This WISHI is not accepting members.');
         }
         if ($this->isMember($user, $wishi)) {

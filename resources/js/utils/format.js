@@ -65,6 +65,7 @@ export const cycleStatusLabels = {
 
 export const wishiStatusLabels = {
     draft: 'Draft',
+    planned: 'Planned',
     active: 'Active',
     completed: 'Completed',
     cancelled: 'Cancelled',

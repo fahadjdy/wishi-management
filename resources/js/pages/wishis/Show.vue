@@ -62,10 +62,25 @@ const tabs = computed(() => {
 
 const statusBadge = {
     draft: 'badge-gray',
+    planned: 'badge-warning',
     active: 'badge-success',
     completed: 'badge-info',
     cancelled: 'badge-danger',
 };
+
+const publishing = ref(false);
+async function publishWishi() {
+    if (!confirm('Publish this WISHI? It will become visible to all platform members in the Discover list, and they can request to join.')) return;
+    publishing.value = true;
+    try {
+        await wishiStore.publish(route.params.uuid);
+        toast.success('WISHI published — now discoverable by members.');
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not publish.');
+    } finally {
+        publishing.value = false;
+    }
+}
 
 async function loadAll(uuid) {
     try {
@@ -115,8 +130,22 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
 <template>
     <div v-if="!wishi" class="text-center py-16 text-gray-400">Loading…</div>
     <div v-else class="space-y-5">
-        <!-- Draft / not-full: waiting for members -->
-        <div v-if="wishi.status === 'draft' && !wishi.is_full" class="surface-padded bg-amber-50 border-amber-200">
+        <!-- Draft (admin-only): not yet published -->
+        <div v-if="wishi.status === 'draft' && isAdmin" class="surface-padded bg-gray-50 border-gray-200">
+            <div class="flex items-start gap-3 flex-wrap">
+                <div class="text-2xl">📝</div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-gray-900">Draft — not yet public</h3>
+                    <p class="text-sm text-gray-700 mt-0.5">Only you can see this WISHI. Publish it to make it visible to members in the Discover list so they can request to join.</p>
+                </div>
+                <button @click="publishWishi" :disabled="publishing" class="btn-primary shrink-0">
+                    {{ publishing ? 'Publishing…' : '📢 Publish WISHI' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Planned / not-full: waiting for members -->
+        <div v-else-if="wishi.status === 'planned' && !wishi.is_full" class="surface-padded bg-amber-50 border-amber-200">
             <div class="flex items-start gap-3 flex-wrap">
                 <div class="text-2xl">⏳</div>
                 <div class="flex-1 min-w-0">
@@ -126,18 +155,18 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                         <strong>{{ wishi.seats_remaining }} more</strong> needed before this WISHI can start.
                         <span v-if="wishi.pending_members_count"> · {{ wishi.pending_members_count }} pending approval.</span>
                     </p>
-                    <p class="text-xs text-amber-700 mt-1">Start date isn't fixed yet — it becomes today's date when the admin starts the WISHI.</p>
+                    <p class="text-xs text-amber-700 mt-1">Planned start: {{ formatDate(wishi.start_date) }}. WISHI cannot open before this date.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Draft / full: ready for admin to start -->
-        <div v-else-if="wishi.status === 'draft' && wishi.can_start && isAdmin" class="surface-padded bg-emerald-50 border-emerald-200">
+        <!-- Planned / full: ready for admin to start -->
+        <div v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" class="surface-padded bg-emerald-50 border-emerald-200">
             <div class="flex items-start gap-3 flex-wrap">
                 <div class="text-2xl">✅</div>
                 <div class="flex-1 min-w-0">
                     <h3 class="font-semibold text-emerald-900">Ready to start</h3>
-                    <p class="text-sm text-emerald-800 mt-0.5">All {{ wishi.total_members }} members have joined. Start the WISHI to open cycle #1 — every member will be notified.</p>
+                    <p class="text-sm text-emerald-800 mt-0.5">All {{ wishi.total_members }} members have joined. Start the WISHI on or after {{ formatDate(wishi.start_date) }} to open cycle #1 — every member will be notified.</p>
                 </div>
                 <button @click="startWishi" :disabled="starting" class="btn-success shrink-0">
                     {{ starting ? 'Starting…' : '🚀 Start WISHI now' }}
@@ -145,8 +174,8 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
             </div>
         </div>
 
-        <!-- Draft / full / non-admin: waiting message -->
-        <div v-else-if="wishi.status === 'draft' && wishi.can_start && !isAdmin" class="surface-padded bg-indigo-50 border-indigo-200">
+        <!-- Planned / full / non-admin: waiting message -->
+        <div v-else-if="wishi.status === 'planned' && wishi.can_start && !isAdmin" class="surface-padded bg-indigo-50 border-indigo-200">
             <h3 class="font-semibold text-indigo-900">All members joined</h3>
             <p class="text-sm text-indigo-800 mt-0.5">Waiting for the admin ({{ wishi.creator?.name }}) to start this WISHI.</p>
         </div>

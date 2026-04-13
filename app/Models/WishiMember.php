@@ -20,6 +20,7 @@ class WishiMember extends Model
         'joined_at',
         'has_won',
         'won_in_cycle',
+        'token_no',
     ];
 
     protected function casts(): array
@@ -30,6 +31,7 @@ class WishiMember extends Model
             'has_won' => 'boolean',
             'joined_at' => 'datetime',
             'won_in_cycle' => 'integer',
+            'token_no' => 'integer',
         ];
     }
 

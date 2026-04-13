@@ -1,13 +1,21 @@
 <script setup>
-import { onMounted, reactive, watch, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { onMounted, reactive, watch, ref, computed } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useWishiStore } from '@/stores/wishi';
 import { useAuthStore } from '@/stores/auth';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
+import { useToast } from 'vue-toastification';
 import { formatINR, formatDate, wishiStatusLabels } from '@/utils/format';
 
 const store = useWishiStore();
 const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
+
+function openWishi(uuid) {
+    router.push(`/wishis/${uuid}`);
+}
 
 useBreadcrumbs(() => [{ label: 'WISHIs' }]);
 
@@ -15,10 +23,12 @@ const filters = reactive({
     q: '',
     status: '',
     role: '',
+    scope: route.query.scope || 'all',
     cycle_type: '',
     sort: 'newest',
 });
 const page = ref(1);
+const joiningUuid = ref(null);
 
 let debounce;
 function refresh() {
@@ -31,38 +41,89 @@ function refresh() {
 onMounted(() => store.fetchAll({ ...filters, page: page.value }));
 watch(filters, () => { page.value = 1; refresh(); }, { deep: true });
 
+// When user switches to Discover, clear filters that don't apply there so the
+// query stays semantically clean (role + status are meaningless for discover).
+watch(() => filters.scope, (s) => {
+    if (s === 'discover') {
+        filters.role = '';
+        filters.status = '';
+    }
+});
+
 function clearAll() {
     filters.q = ''; filters.status = ''; filters.role = ''; filters.cycle_type = ''; filters.sort = 'newest';
     page.value = 1;
+}
+
+async function requestJoin(uuid) {
+    joiningUuid.value = uuid;
+    try {
+        const res = await store.join(uuid);
+        toast.success(res.status === 'approved' ? 'You have joined.' : 'Join request sent to admin.');
+        refresh();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not send join request.');
+    } finally {
+        joiningUuid.value = null;
+    }
 }
 
 function gotoPage(n) { page.value = n; store.fetchAll({ ...filters, page: n }); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
 const statusBadge = {
     draft: 'badge-gray',
+    planned: 'badge-warning',
     active: 'badge-success',
     completed: 'badge-info',
     cancelled: 'badge-danger',
 };
 
-const statusChips = [
-    { key: '', label: 'All' },
-    { key: 'draft', label: 'Planned', hint: 'draft' },
-    { key: 'active', label: 'Active' },
-    { key: 'completed', label: 'Completed' },
-    { key: 'cancelled', label: 'Cancelled' },
-];
+// Chip list adapts to scope + counts:
+//  • 'All' is always shown (and clears the filter).
+//  • Draft is admin-only and only when there are drafts.
+//  • Every other chip is shown only when its count > 0 in the current scope —
+//    so empty buckets like "Planned (0)" or "Cancelled (0)" don't clutter the UI.
+//  • Discover scope inherently means "planned only", so we hide the chips there.
+const statusChips = computed(() => {
+    const counts = store.counts || {};
+    if (filters.scope === 'discover') {
+        return [{ key: '', label: 'All' }];
+    }
+    const candidates = [
+        { key: '', label: 'All', alwaysShow: true },
+        { key: 'draft', label: 'Draft', adminOnly: true },
+        { key: 'planned', label: 'Planned' },
+        { key: 'active', label: 'Active' },
+        { key: 'completed', label: 'Completed' },
+        { key: 'cancelled', label: 'Cancelled' },
+    ];
+    return candidates.filter((c) => {
+        if (c.alwaysShow) return true;
+        if (c.adminOnly && !auth.user?.is_admin) return false;
+        return (counts[c.key] || 0) > 0;
+    });
+});
 </script>
 
 <template>
     <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">Your WISHIs</h1>
-                <p class="text-sm text-gray-500">Search, filter, and jump into any chit fund you're part of.</p>
+                <h1 class="text-2xl font-bold text-gray-900">WISHIs</h1>
+                <p class="text-sm text-gray-500">Yours plus every WISHI on the platform that's accepting new members.</p>
             </div>
             <RouterLink v-if="auth.user?.is_admin" to="/wishis/create" class="btn-primary">+ New WISHI</RouterLink>
             <span v-else class="text-xs text-gray-500">Only platform admins can create WISHIs</span>
+        </div>
+
+        <!-- Scope tabs -->
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+            <button @click="filters.scope = 'all'" :class="filters.scope === 'all' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'" class="px-4 py-1.5 rounded-md text-sm font-medium">All</button>
+            <button @click="filters.scope = 'mine'" :class="filters.scope === 'mine' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'" class="px-4 py-1.5 rounded-md text-sm font-medium">My WISHIs</button>
+            <button @click="filters.scope = 'discover'" :class="filters.scope === 'discover' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'" class="px-4 py-1.5 rounded-md text-sm font-medium">
+                Discover
+                <span v-if="store.counts" class="ml-1 opacity-70 text-xs">({{ store.counts.all }})</span>
+            </button>
         </div>
 
         <!-- Search + filters -->
@@ -72,7 +133,7 @@ const statusChips = [
                     <input v-model="filters.q" type="search" placeholder="Search by name…" class="form-input pl-9" />
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                 </div>
-                <select v-model="filters.role" class="form-input">
+                <select v-if="filters.scope !== 'discover'" v-model="filters.role" class="form-input">
                     <option value="">Any role</option>
                     <option value="admin">Admin of</option>
                     <option value="member">Member of</option>
@@ -121,8 +182,10 @@ const statusChips = [
         </div>
 
         <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            <RouterLink v-for="w in store.wishis" :key="w.id" :to="`/wishis/${w.uuid}`"
-                class="surface-padded hover:shadow-md hover:border-indigo-300 transition group"
+            <div v-for="w in store.wishis" :key="w.id"
+                @click="openWishi(w.uuid)"
+                class="surface-padded hover:shadow-md hover:border-indigo-300 transition group cursor-pointer"
+                :class="w.can_join ? 'border-indigo-200 bg-indigo-50/30' : ''"
             >
                 <div class="flex items-start justify-between mb-3 gap-2">
                     <div class="flex flex-wrap gap-1.5">
@@ -132,8 +195,10 @@ const statusChips = [
                         <span v-else class="badge-brand" :title="`${w.auto_cycles_count} random + ${w.tender_cycles_count} tender cycles`">
                             ⚡ Hybrid · {{ w.auto_cycles_count }}R / {{ w.tender_cycles_count }}T
                         </span>
+                        <span v-if="w.can_join" class="badge-info">✨ New · open to join</span>
                     </div>
                     <span v-if="w.is_admin" class="badge-brand shrink-0">Admin</span>
+                    <span v-else-if="w.is_member" class="badge-success shrink-0 capitalize">{{ w.my_membership_status === 'pending' ? 'Pending' : 'Member' }}</span>
                 </div>
 
                 <h3 class="font-semibold text-lg text-gray-900 group-hover:text-indigo-600">{{ w.name }}</h3>
@@ -174,7 +239,10 @@ const statusChips = [
                     <span v-if="w.cycles_remaining > 0">{{ w.cycles_remaining }} cycle{{ w.cycles_remaining !== 1 ? 's' : '' }} left</span>
                     <span v-else class="text-emerald-600 font-medium">✓ Done</span>
                 </div>
-            </RouterLink>
+                <button v-if="w.can_join" @click.stop="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-primary btn-sm w-full mt-3">
+                    {{ joiningUuid === w.uuid ? 'Sending…' : (w.require_approval ? '📩 Request to join' : '✅ Join now') }}
+                </button>
+            </div>
         </div>
 
         <!-- Pagination -->
