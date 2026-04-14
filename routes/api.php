@@ -57,6 +57,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/wishis/{wishi}/cycles/{cycle}/contributions', [ContributionController::class, 'index']);
         Route::post('/wishis/{wishi}/cycles/{cycle}/contributions', [ContributionController::class, 'store'])->middleware('throttle:sensitive');
+        Route::delete('/wishis/{wishi}/cycles/{cycle}/contributions/{contribution}/payment', [ContributionController::class, 'revert'])->middleware('throttle:sensitive');
 
         Route::get('/wishis/{wishi}/cycles/{cycle}/tenders', [TenderController::class, 'index']);
         Route::post('/wishis/{wishi}/cycles/{cycle}/tenders', [TenderController::class, 'store'])->middleware('throttle:bid');

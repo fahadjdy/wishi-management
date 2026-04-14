@@ -86,9 +86,8 @@ Guards enforced in `MembershipService`:
 - WISHI status must be `draft` or `active`.
 - Min credit score (if set on WISHI) must be met for `requestJoin`.
 - `max_active_wishis_per_member` cap (if set) must not be exceeded.
-- If WISHI has `block_if_missed_payments = true`, user's past missed contributions anywhere on the platform block them (for `requestJoin`).
 - Capacity check (can't exceed `total_members`).
-- `invite` skips credit/cap/missed-payment checks (admin has explicitly vetted the member by clicking Invite).
+- `invite` skips credit/cap checks (admin has explicitly vetted the member by clicking Invite).
 
 Once accepted/approved, member gets a `MemberStatusNotification` in their inbox. The invitation carries a `MemberStatusNotification(status='invited')` push when sent. In parallel, the WISHI admin (creator) receives a **MemberJoinedNotification** whenever:
 - a user posts a new join request (`event='requested'`),
@@ -198,6 +197,18 @@ So "first 2 random, then 1 tender" repeats three times across 9 months → 3 ten
 
 **Canonical paid indicator:** `paid_at IS NOT NULL` (NOT `status`, because `status='late'` is ambiguous — could mean "unpaid overdue" or "paid after due").
 
+### Undoing a payment
+
+Admin can reverse a mistaken "Mark as paid" via `DELETE /wishis/{uuid}/cycles/{c}/contributions/{id}/payment` (`ContributionService::revertPayment`). The action is admin-only and:
+
+- Refuses if the cycle has been paid out (`paid_out_at IS NOT NULL`) or already has a winner selected (except cycle #1 organizer payout, which is pre-assigned and revertible).
+- Recomputes which credit action was originally applied (`early_payment` / `on_time_payment` / `late_payment`) and applies the **inverse** delta as a `payment_reverted` credit-score log entry.
+- Clears `paid_at`, `payment_method`, `payment_reference`, `notes` on the contribution; status flips back to `pending` (or `late` if today is past due).
+- Rolls the cycle status back to `contribution_open` if it had auto-advanced to `selection_pending` / `bidding_open`.
+- Writes an `audit_logs` row of action `contribution_reverted` with the original payment timestamp, action, and reverse points so the trail stays intact.
+
+Surfaced in the UI both on the cycle detail (admin contribution table → "Undo" link next to each paid row) and inside the **admin member-profile modal** (Recent payments → "Undo" button per row, gated by `can_undo`).
+
 ---
 
 ## 10. Winner selection
@@ -280,7 +291,7 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 | Notification | Trigger |
 |---|---|
 | `MemberStatusNotification` | Member approved / rejected / removed |
-| `WishiFullNotification` | Last member joins; creator receives this |
+| `WishiFullNotification` | Last member joins; creator receives this. Payload includes `url` (`/wishis/{uuid}`) so the dashboard inbox can deep-link straight to the WISHI's Start screen. |
 | `WishiStartedNotification` | Admin activates; every member receives this |
 | `PaymentReminderNotification` | `wishi:payment-reminders` scheduler, 3 days before due |
 | `TenderWindowNotification` | `wishi:tender-reminders` scheduler, open + close alerts |
@@ -288,7 +299,19 @@ Stored in Laravel's `notifications` table; served via `GET /api/v1/notifications
 
 ---
 
-## 13a. Privacy — what members can and cannot see
+## 13a. Member dashboard UX rules
+
+The member dashboard (`pages/Dashboard.vue`) follows a **"don't cry wolf"** rule: red/warning chrome appears **only when a payment is actually late** (its due date has passed and it's still unpaid). Anything still in the future — including "due today" or "due tomorrow" — is rendered in neutral gray.
+
+| Section | Visibility rule | Wording |
+|---|---|---|
+| **Late-payment hero** (red surface) | Only when the member has ≥1 contribution with `due_date < today` and `paid_at IS NULL`. Lists every late row inline. | "X late payments" header; per-row "X days late" |
+| **Next month total** (neutral surface) | Always visible when there are any upcoming payments. Sum of every upcoming contribution amount across all joined WISHIs. | "Next month total" + count of WISHIs |
+| **Upcoming payments table** | Always visible; one row per upcoming contribution. Cell color follows `urgencyClass` — red only for `days < 0`, gray otherwise. | "Due in N days" / "Due today" / "Due tomorrow" / "N days late" |
+
+**Forbidden language:** the word *"overdue"* is reserved for admin-side WISHI-opening cards (where the admin needs to act on a late activation). On the payment-due path, late payments are always called **"late"**, never overdue, so the messaging stays consistent across dashboard, modals, and notifications.
+
+## 13c. Privacy — what members can and cannot see
 
 Members have **minimal visibility by design**. Almost everything in a WISHI is admin-only.
 
@@ -370,12 +393,13 @@ All three are needed — UI hiding is courtesy; the API must never leak admin-on
 | PUT | `/wishis/{uuid}/cycles/{c}/surplus` | Handle surplus (non-tender only) |
 | PUT | `/wishis/{uuid}/cycles/{c}/payout` | Record cycle payout(s) |
 | GET/POST | `/wishis/{uuid}/cycles/{c}/contributions` | List / record |
+| DELETE | `/wishis/{uuid}/cycles/{c}/contributions/{id}/payment` | Undo a recorded payment (admin only — see §9 "Undoing a payment") |
 | GET/POST | `/wishis/{uuid}/cycles/{c}/tenders` | List bids / place bid (immutable) |
 | GET | `/wishis/{uuid}/audit-logs` | Wishi-scoped audit |
 | GET | `/admin/dashboard` | Platform analytics (platform admin only) |
 | GET | `/admin/users` | All users, search + filter |
 | POST | `/admin/users` | **Create a new account (replaces self-registration)** |
-| GET | `/admin/users/{id}` | User detail |
+| GET | `/admin/users/{id}` | User detail — also returns `active_wishis`, `pending_contributions`, `paid_contributions` (with `can_undo` flag) and `totals` so the admin Members page can render the member-profile modal in one round-trip |
 | PUT | `/admin/users/{id}/toggle-admin` | Grant/revoke platform admin |
 | PUT | `/admin/users/{id}/lock` | Lock account |
 | PUT | `/admin/users/{id}/unlock` | Unlock |

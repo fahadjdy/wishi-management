@@ -244,10 +244,6 @@ class MembershipService
             throw new \DomainException("You have reached the maximum number of active WISHIs ({$maxPerMember}).");
         }
 
-        if ($wishi->block_if_missed_payments && $user->hasMissedContributions()) {
-            throw new \DomainException('You have missed contributions in another WISHI; new enrolments are blocked.');
-        }
-
         $current = $wishi->activeMembers()->count();
         if ($current >= $wishi->total_members) {
             throw new \DomainException('This WISHI is already at full capacity.');

@@ -218,6 +218,20 @@ async function recordMemberPayment(userId) {
     }
 }
 
+async function undoPayment(contribution) {
+    if (!confirm(`Undo this ${Number(contribution.amount).toLocaleString('en-IN')} ₹ payment for ${contribution.user?.name || 'this member'}? The credit-score change will also be reversed.`)) return;
+    loading.value = true;
+    try {
+        await contribStore.revert(route.params.uuid, route.params.cycleId, contribution.id);
+        toast.success('Payment reverted.');
+        await load();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not undo — cycle may already be settled.');
+    } finally {
+        loading.value = false;
+    }
+}
+
 async function selectWinner() {
     loading.value = true;
     try {
@@ -439,6 +453,15 @@ const eligibleMembers = computed(() =>
                                     >
                                         Mark paid
                                     </button>
+                                    <button
+                                        v-else-if="!cycle.paid_out_at && (cycle.selection_method === 'organizer_payout' || !cycle.winner_id)"
+                                        @click="undoPayment(c)"
+                                        :disabled="loading"
+                                        class="text-xs text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Reverts the payment and the credit-score change"
+                                    >
+                                        Undo
+                                    </button>
                                 </td>
                             </tr>
                         </tbody>
@@ -511,7 +534,14 @@ const eligibleMembers = computed(() =>
                         </template>
                         <div v-else class="p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm">
                             <div class="font-semibold">⏳ Winner announcement locked</div>
-                            <div class="text-xs mt-1">Available on {{ formatDate(cycle.contribution_due_at) }} ({{ daysTillMature }} day{{ daysTillMature !== 1 ? 's' : '' }} left). Winners can only be chosen on or after the cycle's due date.</div>
+                            <div class="text-xs mt-1">
+                                This button will open on <strong>{{ formatDateTime(cycle.contribution_due_at) }}</strong>
+                                ({{ daysTillMature }} day{{ daysTillMature !== 1 ? 's' : '' }} left).
+                                Winners can only be chosen on or after the cycle's scheduled date.
+                            </div>
+                            <button class="btn-primary w-full mt-3 opacity-50 cursor-not-allowed" disabled>
+                                Select winner (locked)
+                            </button>
                         </div>
                     </div>
                 </div>

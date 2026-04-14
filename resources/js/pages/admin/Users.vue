@@ -1,10 +1,11 @@
 <script setup>
 import { onMounted, ref, reactive, computed, watch } from 'vue';
+import { RouterLink } from 'vue-router';
 import { useAdminStore } from '@/stores/admin';
 import { useAuthStore } from '@/stores/auth';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { useToast } from 'vue-toastification';
-import { formatDateTime, trustColor } from '@/utils/format';
+import { formatDate, formatDateTime, formatINR, trustColor } from '@/utils/format';
 
 const store = useAdminStore();
 const auth = useAuthStore();
@@ -117,6 +118,63 @@ async function adjustCredit() {
         showCreditModal.value = false;
         await load();
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
+}
+
+// Member-profile modal: shows the selected user's active WISHIs + pending dues
+// + recent paid contributions so the admin can Mark-paid / Undo inline.
+const showProfileModal = ref(false);
+const profileUser = ref(null);
+const profileLoading = ref(false);
+const profileBusyId = ref(null);
+
+async function openProfile(u) {
+    profileUser.value = u;
+    showProfileModal.value = true;
+    profileLoading.value = true;
+    try {
+        await store.fetchUser(u.id);
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not load profile.');
+        showProfileModal.value = false;
+    } finally {
+        profileLoading.value = false;
+    }
+}
+
+async function profileMarkPaid(c) {
+    profileBusyId.value = c.id;
+    try {
+        await store.markContributionPaid(c.wishi_uuid, c.cycle_id, profileUser.value.id);
+        toast.success(`Marked ${formatINR(c.amount)} paid for ${profileUser.value.name}.`);
+        await store.fetchUser(profileUser.value.id);
+        await load();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Failed.');
+    } finally {
+        profileBusyId.value = null;
+    }
+}
+
+async function profileUndoPaid(c) {
+    if (!confirm(`Undo ${formatINR(c.amount)} payment for cycle #${c.cycle_number}? The credit-score change will also be reversed.`)) return;
+    profileBusyId.value = c.id;
+    try {
+        await store.revertContribution(c.wishi_uuid, c.cycle_id, c.id);
+        toast.success('Payment reverted.');
+        await store.fetchUser(profileUser.value.id);
+        await load();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not undo.');
+    } finally {
+        profileBusyId.value = null;
+    }
+}
+
+function daysUntil(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 </script>
 
@@ -301,6 +359,7 @@ async function adjustCredit() {
                                         <button @click="restore(u)" class="btn-secondary btn-sm">Restore</button>
                                     </template>
                                     <template v-else>
+                                        <button @click="openProfile(u)" class="btn-primary btn-sm" title="View WISHIs + pending dues">View</button>
                                         <button @click="openCredit(u)" class="btn-ghost btn-sm" title="Adjust credit">±</button>
                                         <button v-if="u.is_locked" @click="unlock(u)" class="btn-success btn-sm">Unlock</button>
                                         <button v-else @click="openLock(u)" class="btn-secondary btn-sm">Lock</button>
@@ -413,6 +472,143 @@ async function adjustCredit() {
                     <button @click="submitCreate" :disabled="createLoading" class="btn-primary">
                         {{ createLoading ? 'Creating…' : 'Create account' }}
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Member profile modal: WISHIs + pending dues + paid history with inline mark-paid / undo -->
+        <div v-if="showProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showProfileModal = false">
+            <div class="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+                <div class="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-11 h-11 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                            {{ profileUser?.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="font-semibold text-lg truncate">{{ profileUser?.name }}</h3>
+                            <div class="text-xs text-gray-500 truncate">{{ profileUser?.email }}<span v-if="profileUser?.phone"> · {{ profileUser.phone }}</span></div>
+                            <div class="text-xs text-gray-500 mt-0.5">Credit <strong>{{ profileUser?.credit_score }}</strong> · <span :class="trustColor[profileUser?.trust_level]" class="capitalize">{{ profileUser?.trust_level }}</span></div>
+                        </div>
+                    </div>
+                    <button @click="showProfileModal = false" class="text-gray-400 hover:text-gray-700 text-2xl leading-none shrink-0">×</button>
+                </div>
+
+                <div class="overflow-y-auto p-5 space-y-5">
+                    <div v-if="profileLoading" class="py-12 text-center text-sm text-gray-400">Loading…</div>
+                    <template v-else>
+                        <!-- Totals -->
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="surface-padded">
+                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Active WISHIs</div>
+                                <div class="text-2xl font-bold">{{ store.currentUserDetail?.totals?.active_wishis_count ?? 0 }}</div>
+                            </div>
+                            <div class="surface-padded">
+                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Pending dues</div>
+                                <div class="text-2xl font-bold text-amber-600">{{ formatINR(store.currentUserDetail?.totals?.pending_dues || 0) }}</div>
+                            </div>
+                            <div class="surface-padded">
+                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Pending count</div>
+                                <div class="text-2xl font-bold">{{ store.currentUserDetail?.totals?.pending_count ?? 0 }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Active WISHIs -->
+                        <section>
+                            <h4 class="font-semibold mb-2">Active WISHIs</h4>
+                            <div v-if="!store.currentUserDetail?.active_wishis?.length" class="text-sm text-gray-400 py-3">Not a member of any active WISHI.</div>
+                            <ul v-else class="divide-y divide-gray-100 surface">
+                                <li v-for="m in store.currentUserDetail.active_wishis" :key="m.wishi_uuid" class="p-3 flex items-center justify-between gap-3 flex-wrap">
+                                    <div class="min-w-0">
+                                        <RouterLink :to="`/wishis/${m.wishi_uuid}`" class="font-medium text-indigo-600 hover:underline truncate block">{{ m.wishi_name }}</RouterLink>
+                                        <div class="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
+                                            <span class="capitalize">{{ m.cycle_type }}</span>
+                                            <span>· Cycle {{ m.current_cycle }}/{{ m.duration_months }}</span>
+                                            <span>· {{ formatINR(m.monthly_contribution) }}/mo</span>
+                                            <span v-if="m.token_no">· Token #{{ m.token_no }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 shrink-0">
+                                        <span :class="m.membership_status === 'pending' ? 'badge-warning' : 'badge-success'" class="capitalize">{{ m.membership_status }}</span>
+                                        <span v-if="m.has_won" class="badge-info">🏆 #{{ m.won_in_cycle }}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </section>
+
+                        <!-- Pending contributions with inline Mark paid -->
+                        <section>
+                            <h4 class="font-semibold mb-2">Pending payments</h4>
+                            <div v-if="!store.currentUserDetail?.pending_contributions?.length" class="text-sm text-gray-400 py-3">Nothing pending — all caught up.</div>
+                            <table v-else class="w-full text-sm surface overflow-hidden">
+                                <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                                    <tr>
+                                        <th class="text-left px-3 py-2">WISHI</th>
+                                        <th class="text-left px-3 py-2">Cycle</th>
+                                        <th class="text-right px-3 py-2">Amount</th>
+                                        <th class="text-left px-3 py-2">Due</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr v-for="c in store.currentUserDetail.pending_contributions" :key="c.id">
+                                        <td class="px-3 py-2 truncate max-w-[160px]">{{ c.wishi_name }}</td>
+                                        <td class="px-3 py-2">#{{ c.cycle_number }}</td>
+                                        <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
+                                        <td class="px-3 py-2">
+                                            <div>{{ formatDate(c.due_date) }}</div>
+                                            <div class="text-[11px]" :class="daysUntil(c.due_date) < 0 ? 'text-red-600 font-semibold' : 'text-gray-500'">
+                                                <span v-if="daysUntil(c.due_date) < 0">{{ Math.abs(daysUntil(c.due_date)) }} days late</span>
+                                                <span v-else-if="daysUntil(c.due_date) === 0">due today</span>
+                                                <span v-else>in {{ daysUntil(c.due_date) }} days</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-3 py-2 text-right">
+                                            <button @click="profileMarkPaid(c)" :disabled="profileBusyId === c.id" class="btn-success btn-sm">
+                                                {{ profileBusyId === c.id ? '…' : 'Mark paid' }}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </section>
+
+                        <!-- Recently paid (with Undo) -->
+                        <section v-if="store.currentUserDetail?.paid_contributions?.length">
+                            <h4 class="font-semibold mb-2">Recent payments</h4>
+                            <table class="w-full text-sm surface overflow-hidden">
+                                <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                                    <tr>
+                                        <th class="text-left px-3 py-2">WISHI</th>
+                                        <th class="text-left px-3 py-2">Cycle</th>
+                                        <th class="text-right px-3 py-2">Amount</th>
+                                        <th class="text-left px-3 py-2">Paid</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr v-for="c in store.currentUserDetail.paid_contributions" :key="c.id">
+                                        <td class="px-3 py-2 truncate max-w-[160px]">{{ c.wishi_name }}</td>
+                                        <td class="px-3 py-2">#{{ c.cycle_number }}</td>
+                                        <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
+                                        <td class="px-3 py-2">
+                                            <div>{{ formatDate(c.paid_at) }}</div>
+                                            <div v-if="c.status === 'late'" class="text-[11px] text-amber-600">paid late</div>
+                                        </td>
+                                        <td class="px-3 py-2 text-right">
+                                            <button v-if="c.can_undo" @click="profileUndoPaid(c)" :disabled="profileBusyId === c.id" class="btn-danger btn-sm">
+                                                {{ profileBusyId === c.id ? '…' : 'Undo' }}
+                                            </button>
+                                            <span v-else class="text-[11px] text-gray-400">locked</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </section>
+                    </template>
+                </div>
+
+                <div class="p-4 border-t border-gray-100 flex justify-end">
+                    <button @click="showProfileModal = false" class="btn-secondary">Close</button>
                 </div>
             </div>
         </div>

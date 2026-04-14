@@ -39,10 +39,16 @@ function daysUntil(dateStr) {
     return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
-const nextPayment = computed(() => {
-    const list = dash.data?.upcoming_payments || [];
-    return list.length ? list[0] : null;
-});
+const upcomingPayments = computed(() => dash.data?.upcoming_payments || []);
+
+// Late payments only — drives the warning hero card. A payment is "late" when
+// its due date has passed (days < 0). Future-due payments never show a red warning.
+const latePayments = computed(() => upcomingPayments.value.filter((p) => daysUntil(p.due_date) < 0));
+
+// Sum of all amounts the member has to pay across their joined WISHIs — shown
+// as the top-of-dashboard "Next month total" pill so the member always knows
+// the full out-of-pocket figure without doing mental math.
+const nextMonthTotal = computed(() => upcomingPayments.value.reduce((s, p) => s + Number(p.amount || 0), 0));
 
 const upcomingOpenings = computed(() => dash.data?.upcoming_wishi_openings || []);
 
@@ -68,17 +74,18 @@ function openingTextClass(days) {
     return 'text-indigo-700';
 }
 
+// Product rule: warning color (red) is shown ONLY when a payment is actually
+// late — i.e. the due date has passed. Upcoming payments (even "due today"
+// or "due tomorrow") stay neutral so the dashboard doesn't cry wolf. See R5.
 function urgencyClass(days) {
     if (days === null) return 'text-gray-500';
     if (days < 0) return 'text-red-600';
-    if (days <= 2) return 'text-red-600';
-    if (days <= 5) return 'text-amber-600';
-    return 'text-emerald-600';
+    return 'text-gray-600';
 }
 
 function urgencyLabel(days) {
     if (days === null) return '';
-    if (days < 0) return `${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} overdue`;
+    if (days < 0) return `${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} late`;
     if (days === 0) return 'Due today';
     if (days === 1) return 'Due tomorrow';
     return `Due in ${days} day${days !== 1 ? 's' : ''}`;
@@ -101,34 +108,43 @@ function urgencyLabel(days) {
             </div>
         </div>
 
-        <!-- Next payment alert (prominent) -->
-        <div v-if="nextPayment" class="surface-padded"
-            :class="daysUntil(nextPayment.due_date) <= 2 ? 'bg-red-50 border-red-200' : daysUntil(nextPayment.due_date) <= 5 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div class="flex items-start gap-3 min-w-0 flex-1">
-                    <div class="text-3xl">
-                        <span v-if="daysUntil(nextPayment.due_date) < 0">⚠️</span>
-                        <span v-else-if="daysUntil(nextPayment.due_date) <= 2">⏰</span>
-                        <span v-else>💳</span>
+        <!-- Late-payment warning (only when the member is actually behind) -->
+        <div v-if="latePayments.length" class="surface-padded bg-red-50 border-red-200">
+            <div class="flex items-start gap-3">
+                <div class="text-3xl">⚠️</div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs uppercase tracking-wider font-semibold text-red-700">
+                        {{ latePayments.length }} late payment{{ latePayments.length !== 1 ? 's' : '' }}
                     </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="text-xs uppercase tracking-wider font-semibold" :class="urgencyClass(daysUntil(nextPayment.due_date))">
-                            Next payment
-                        </div>
-                        <div class="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">{{ formatINR(nextPayment.amount) }}</div>
-                        <div class="text-sm text-gray-700 mt-0.5">
-                            {{ nextPayment.wishi?.name || 'WISHI' }} · Cycle #{{ nextPayment.cycle_number }}
-                        </div>
-                        <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <span :class="urgencyClass(daysUntil(nextPayment.due_date))" class="font-semibold text-sm">
-                                {{ urgencyLabel(daysUntil(nextPayment.due_date)) }}
-                            </span>
-                            <span class="text-xs text-gray-500">· {{ formatDate(nextPayment.due_date) }}</span>
-                        </div>
-                    </div>
+                    <p class="text-sm text-red-800 mt-1">
+                        Please clear these with the WISHI admin as soon as possible — late payments reduce your credit score.
+                    </p>
+                    <ul class="mt-2 divide-y divide-red-200 text-sm">
+                        <li v-for="p in latePayments" :key="p.id" class="py-2 flex items-center justify-between gap-2 flex-wrap">
+                            <div class="min-w-0">
+                                <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="text-red-900 font-medium hover:underline truncate block">
+                                    {{ p.wishi.name }} · Cycle #{{ p.cycle_number }}
+                                </RouterLink>
+                                <span v-else class="text-red-900 font-medium truncate">WISHI · Cycle #{{ p.cycle_number }}</span>
+                                <div class="text-[11px] text-red-700 mt-0.5">Was due on {{ formatDate(p.due_date) }}</div>
+                            </div>
+                            <span class="text-red-700 font-semibold shrink-0">{{ formatINR(p.amount) }} · {{ urgencyLabel(daysUntil(p.due_date)) }}</span>
+                        </li>
+                    </ul>
                 </div>
-                <div class="text-right shrink-0 text-xs text-gray-500 italic max-w-[200px]">
-                    Pay the WISHI admin directly. They'll mark this as received.
+            </div>
+        </div>
+
+        <!-- Next month total (always visible when there are dues) — neutral, informational -->
+        <div v-if="upcomingPayments.length" class="surface-padded">
+            <div class="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                    <div class="text-xs uppercase tracking-wider font-semibold text-gray-500">Next month total</div>
+                    <div class="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{{ formatINR(nextMonthTotal) }}</div>
+                    <p class="text-xs text-gray-500 mt-1">Across {{ upcomingPayments.length }} WISHI{{ upcomingPayments.length !== 1 ? 's' : '' }} you're a member of.</p>
+                </div>
+                <div class="text-right text-xs text-gray-500 italic max-w-xs">
+                    Pay the WISHI admin directly — cash, UPI or bank transfer. They'll mark each payment as received.
                 </div>
             </div>
         </div>
@@ -250,11 +266,14 @@ function urgencyLabel(days) {
                 <div v-else class="divide-y divide-gray-100">
                     <div v-for="p in dash.data.upcoming_payments" :key="p.id" class="py-3 flex items-center justify-between gap-3">
                         <div class="min-w-0 flex-1">
-                            <div class="font-medium text-gray-900 truncate">{{ p.wishi?.name || 'WISHI' }}</div>
+                            <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="font-medium text-gray-900 hover:text-indigo-600 hover:underline truncate block">
+                                {{ p.wishi.name }}
+                            </RouterLink>
+                            <div v-else class="font-medium text-gray-900 truncate">WISHI</div>
                             <div class="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap mt-0.5">
                                 <span>Cycle #{{ p.cycle_number }}</span>
                                 <span>·</span>
-                                <span>{{ formatDate(p.due_date) }}</span>
+                                <span>Due {{ formatDate(p.due_date) }}</span>
                                 <span>·</span>
                                 <span :class="urgencyClass(daysUntil(p.due_date))" class="font-medium">{{ urgencyLabel(daysUntil(p.due_date)) }}</span>
                             </div>

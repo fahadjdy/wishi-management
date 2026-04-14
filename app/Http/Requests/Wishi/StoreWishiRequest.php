@@ -33,7 +33,6 @@ class StoreWishiRequest extends FormRequest
             'hybrid_pattern.*' => [Rule::in(['random', 'tender', 'auto'])],
             'min_credit_score' => ['nullable', 'integer', 'min:0', 'max:100'],
             'max_active_wishis_per_member' => ['nullable', 'integer', 'min:1', 'max:50'],
-            'block_if_missed_payments' => ['sometimes', 'boolean'],
             'tender_start_time' => ['nullable', 'date_format:H:i'],
             'tender_end_time' => ['nullable', 'date_format:H:i'],
             'status' => ['sometimes', Rule::in(['draft', 'active'])],

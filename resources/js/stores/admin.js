@@ -8,6 +8,7 @@ export const useAdminStore = defineStore('admin', {
         summary: null,
         loading: false,
         currentUser: null,
+        currentUserDetail: null,
         dashboard: null,
         dashboardLoading: false,
     }),
@@ -37,6 +38,30 @@ export const useAdminStore = defineStore('admin', {
         async fetchUser(id) {
             const { data } = await api.get(`/admin/users/${id}`);
             this.currentUser = data.data;
+            // Detail payload: active WISHIs + pending/paid contributions — used
+            // by the member profile modal so the admin can mark-paid / undo
+            // without leaving the Members page.
+            this.currentUserDetail = {
+                active_wishis: data.active_wishis || [],
+                pending_contributions: data.pending_contributions || [],
+                paid_contributions: data.paid_contributions || [],
+                totals: data.totals || null,
+            };
+            return this.currentUserDetail;
+        },
+        async createUser(payload) {
+            const { data } = await api.post('/admin/users', payload);
+            return data.data;
+        },
+        async markContributionPaid(wishiUuid, cycleId, userId) {
+            const { data } = await api.post(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions`, {
+                user_id: userId,
+                payment_method: 'cash',
+            });
+            return data.data;
+        },
+        async revertContribution(wishiUuid, cycleId, contributionId) {
+            const { data } = await api.delete(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions/${contributionId}/payment`);
             return data.data;
         },
         async toggleAdmin(id) {

@@ -61,6 +61,19 @@ class ContributionController extends Controller
         return response()->json(['data' => new ContributionResource($updated)]);
     }
 
+    public function revert(Request $request, Wishi $wishi, Cycle $cycle, Contribution $contribution): JsonResponse
+    {
+        $this->scope($wishi, $cycle);
+        abort_unless((int) $contribution->cycle_id === (int) $cycle->id, 404);
+
+        $isAdmin = (int) $wishi->created_by === (int) $request->user()->id;
+        abort_unless($isAdmin, 403, 'Only the WISHI admin can undo a payment.');
+
+        $updated = $this->service->revertPayment($contribution, $request->user());
+        $updated->load('user');
+        return response()->json(['data' => new ContributionResource($updated)]);
+    }
+
     protected function scope(Wishi $wishi, Cycle $cycle): void
     {
         abort_unless((int) $cycle->wishi_id === (int) $wishi->id, 404);

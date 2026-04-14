@@ -21,5 +21,14 @@ export const useContributionStore = defineStore('contribution', {
             }
             return updated;
         },
+        async revert(wishiUuid, cycleId, contributionId) {
+            const { data } = await api.delete(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions/${contributionId}/payment`);
+            const updated = data.data;
+            const idx = this.contributions.findIndex((c) => c.id === updated.id);
+            if (idx !== -1) {
+                this.contributions.splice(idx, 1, updated);
+            }
+            return updated;
+        },
     },
 });

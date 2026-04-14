@@ -117,10 +117,15 @@ function dueColor(days) {
                 <div v-if="!cycles.length" class="text-sm text-gray-400 py-6 text-center">No cycles yet.</div>
                 <div v-else class="space-y-2.5">
                     <RouterLink v-for="c in cycles" :key="c.id" :to="`/wishis/${wishi.uuid}/cycles/${c.id}`"
-                        class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-indigo-200">
+                        class="flex items-center justify-between py-2.5 px-3 rounded-lg border"
+                        :class="c.unpaid_contributions_count > 0
+                            ? 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+                            : 'border-transparent hover:bg-gray-50 hover:border-indigo-200'">
                         <div class="flex items-center gap-3 min-w-0 flex-1">
                             <div class="w-10 h-10 rounded-full font-bold flex items-center justify-center text-sm shrink-0"
-                                :class="c.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'">
+                                :class="c.unpaid_contributions_count > 0
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : (c.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700')">
                                 {{ c.cycle_number }}
                             </div>
                             <div class="min-w-0 flex-1">
@@ -128,6 +133,9 @@ function dueColor(days) {
                                     Cycle #{{ c.cycle_number }}
                                     <span class="badge-gray capitalize">{{ c.mode }}</span>
                                     <span :class="c.status === 'completed' ? 'badge-success' : 'badge-info'" class="capitalize">{{ cycleStatusLabels[c.status] }}</span>
+                                    <span v-if="isAdmin && c.unpaid_contributions_count > 0" class="badge-warning">
+                                        ⚠ {{ c.unpaid_contributions_count }} unpaid
+                                    </span>
                                 </div>
                                 <div v-if="c.selection_method === 'organizer_payout'" class="text-xs text-indigo-700 mt-0.5">
                                     👑 <strong>{{ c.winner?.name || 'Admin' }}</strong> · Organizer payout

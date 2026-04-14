@@ -69,7 +69,86 @@ class UserController extends Controller
     public function show(Request $request, int $id): JsonResponse
     {
         $user = User::withTrashed()->findOrFail($id);
-        return response()->json(['data' => new AdminUserResource($user)]);
+
+        // Active WISHI memberships — everything the admin needs to understand
+        // this member's current obligations in one view.
+        $memberships = \App\Models\WishiMember::where('user_id', $user->id)
+            ->whereIn('status', ['pending', 'approved', 'active'])
+            ->with('wishi:id,uuid,name,status,monthly_contribution,current_cycle,duration_months,total_members,cycle_type,start_date')
+            ->get()
+            ->filter(fn ($m) => $m->wishi && in_array($m->wishi->status, ['planned', 'active', 'draft'], true))
+            ->map(fn ($m) => [
+                'wishi_uuid' => $m->wishi->uuid,
+                'wishi_name' => $m->wishi->name,
+                'wishi_status' => $m->wishi->status,
+                'token_no' => $m->token_no,
+                'membership_status' => $m->status,
+                'monthly_contribution' => (float) $m->wishi->monthly_contribution,
+                'current_cycle' => (int) $m->wishi->current_cycle,
+                'duration_months' => (int) $m->wishi->duration_months,
+                'total_members' => (int) $m->wishi->total_members,
+                'cycle_type' => $m->wishi->cycle_type,
+                'has_won' => (bool) $m->has_won,
+                'won_in_cycle' => $m->won_in_cycle,
+            ])->values();
+
+        // All unpaid dues across every WISHI they're in — admin can mark-paid
+        // straight from the member profile without hunting through cycle pages.
+        // Filter by paid_at IS NULL — status='late' alone would also match
+        // already-paid-after-due contributions (see FLOW.md §9 canonical rule).
+        $pendingContributions = \App\Models\Contribution::where('user_id', $user->id)
+            ->whereNull('paid_at')
+            ->whereIn('status', ['pending', 'late'])
+            ->with('wishi:id,uuid,name', 'cycle:id,cycle_number,status,paid_out_at,winner_id,selection_method')
+            ->orderBy('due_date')
+            ->get()
+            ->map(fn ($c) => [
+                'id' => $c->id,
+                'wishi_uuid' => $c->wishi?->uuid,
+                'wishi_name' => $c->wishi?->name,
+                'cycle_id' => $c->cycle_id,
+                'cycle_number' => $c->cycle?->cycle_number,
+                'amount' => (float) $c->amount,
+                'due_date' => $c->due_date?->toDateString(),
+                'status' => $c->status,
+            ])->values();
+
+        // Recently-paid contributions — needed so admin can Undo a mistaken
+        // "Mark as paid" action directly from the member profile.
+        $paidContributions = \App\Models\Contribution::where('user_id', $user->id)
+            ->whereIn('status', ['paid', 'late'])
+            ->whereNotNull('paid_at')
+            ->with('wishi:id,uuid,name', 'cycle:id,cycle_number,status,paid_out_at,winner_id,selection_method')
+            ->orderByDesc('paid_at')
+            ->limit(20)
+            ->get()
+            ->map(fn ($c) => [
+                'id' => $c->id,
+                'wishi_uuid' => $c->wishi?->uuid,
+                'wishi_name' => $c->wishi?->name,
+                'cycle_id' => $c->cycle_id,
+                'cycle_number' => $c->cycle?->cycle_number,
+                'amount' => (float) $c->amount,
+                'due_date' => $c->due_date?->toDateString(),
+                'paid_at' => optional($c->paid_at)?->toIso8601String(),
+                'status' => $c->status,
+                // Undo is allowed only while the cycle is still open and no
+                // winner has been announced (or it's cycle #1 organizer payout).
+                'can_undo' => ! $c->cycle?->paid_out_at
+                    && ($c->cycle?->selection_method === 'organizer_payout' || ! $c->cycle?->winner_id),
+            ])->values();
+
+        return response()->json([
+            'data' => new AdminUserResource($user),
+            'active_wishis' => $memberships,
+            'pending_contributions' => $pendingContributions,
+            'paid_contributions' => $paidContributions,
+            'totals' => [
+                'active_wishis_count' => $memberships->count(),
+                'pending_dues' => (float) $pendingContributions->sum('amount'),
+                'pending_count' => $pendingContributions->count(),
+            ],
+        ]);
     }
 
     /**

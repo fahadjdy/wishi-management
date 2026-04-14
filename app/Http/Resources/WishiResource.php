@@ -47,7 +47,6 @@ class WishiResource extends JsonResource
             'hybrid_pattern' => $this->hybrid_pattern,
             'min_credit_score' => $this->min_credit_score,
             'max_active_wishis_per_member' => $this->max_active_wishis_per_member,
-            'block_if_missed_payments' => (bool) $this->block_if_missed_payments,
             'tender_start_time' => $this->tender_start_time,
             'tender_end_time' => $this->tender_end_time,
             'members_count' => $this->whenCounted('members'),

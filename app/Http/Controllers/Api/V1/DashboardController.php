@@ -28,7 +28,11 @@ class DashboardController extends Controller
 
         $totalWon = Payout::where('user_id', $user->id)->sum('amount');
 
+        // Canonical "still owed" indicator is paid_at IS NULL (status='late'
+        // is ambiguous — it can also mean "paid after due"). Filtering by
+        // status alone leaks already-paid contributions onto the dashboard.
         $upcomingPayments = Contribution::where('user_id', $user->id)
+            ->whereNull('paid_at')
             ->whereIn('status', ['pending', 'late'])
             ->orderBy('due_date')
             ->with('wishi:id,uuid,name', 'cycle:id,cycle_number')

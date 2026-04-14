@@ -7,6 +7,7 @@ use App\Http\Requests\Wishi\StoreWishiRequest;
 use App\Http\Requests\Wishi\UpdateWishiRequest;
 use App\Http\Resources\WishiResource;
 use App\Models\Wishi;
+use App\Services\CycleService;
 use App\Services\MembershipService;
 use App\Services\WishiService;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,7 @@ class WishiController extends Controller
     public function __construct(
         protected WishiService $service,
         protected MembershipService $membership,
+        protected CycleService $cycles,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -174,7 +176,10 @@ class WishiController extends Controller
     public function show(Request $request, Wishi $wishi): JsonResponse
     {
         $this->authorize('view', $wishi);
-        $wishi->loadCount(['members', 'activeMembers'])->load('creator');
+        // Lazy auto-advance: if current cycle is completed and next cycle's
+        // scheduled date has arrived, open the next cycle now.
+        $this->cycles->autoAdvanceIfDue($wishi);
+        $wishi = $wishi->fresh()->loadCount(['members', 'activeMembers'])->load('creator');
         return response()->json(['data' => new WishiResource($wishi)]);
     }
 

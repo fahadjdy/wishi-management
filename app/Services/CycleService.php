@@ -64,12 +64,14 @@ class CycleService
             $isAdminCycle = ($next === 1);
 
             $mode = $isAdminCycle ? 'random' : $this->resolveCycleMode($wishi, $next);
-            $startDate = $this->startDateForCycle($wishi, $next);
-            // Due date is the cycle's own start date — members must pay on or before it.
-            // No grace is added to the due date itself (that would push monthly due dates
-            // past 30 days, violating the one-cycle-period invariant). Post-due-date
-            // tolerance is handled separately by the `wishi:mark-missed` scheduler.
-            $dueDate = $startDate->copy();
+            $scheduledDate = $this->startDateForCycle($wishi, $next);
+            // Effective due date = max(scheduled, today). If admin opens a cycle late
+            // (past its scheduled date), members shouldn't be retroactively marked late
+            // for paying today — give them the remainder of today as the due window.
+            // If admin opens early, the scheduled future date is preserved so early
+            // payment is still flagged as early, not on-time.
+            $today = now()->startOfDay();
+            $dueDate = $scheduledDate->greaterThan($today) ? $scheduledDate->copy() : $today->copy();
 
             $tenderOpens = null;
             $tenderCloses = null;
@@ -77,9 +79,9 @@ class CycleService
                 // Bidding window: opens at the WISHI's configured `tender_start_time`
                 // (default 06:00) on the cycle's own start date, and closes the same
                 // day at `tender_end_time` (default 20:00). Single-day window.
-                $tenderOpens = $startDate->copy()
+                $tenderOpens = $dueDate->copy()
                     ->setTimeFromTimeString($wishi->tender_start_time ?: '06:00:00');
-                $tenderCloses = $startDate->copy()
+                $tenderCloses = $dueDate->copy()
                     ->setTimeFromTimeString($wishi->tender_end_time ?: '20:00:00');
                 if ($tenderCloses->lessThanOrEqualTo($tenderOpens)) {
                     // Guard against misconfigured times — ensure close is strictly after open.
@@ -142,6 +144,30 @@ class CycleService
                     'due_date' => $dueDate,
                 ]
             );
+        }
+    }
+
+    /**
+     * Lazy auto-advance: if the current cycle is completed AND the next cycle's
+     * scheduled start date has arrived, open the next cycle automatically.
+     * Safe to call on every wishi load — returns null if no advance is due.
+     */
+    public function autoAdvanceIfDue(Wishi $wishi): ?Cycle
+    {
+        if ($wishi->status !== 'active') return null;
+        if ((int) $wishi->current_cycle >= (int) $wishi->duration_months) return null;
+
+        $current = $wishi->cycles()->where('cycle_number', $wishi->current_cycle)->first();
+        if (! $current || $current->status !== 'completed') return null;
+
+        $nextNumber = (int) $wishi->current_cycle + 1;
+        $nextScheduled = $this->startDateForCycle($wishi, $nextNumber);
+        if ($nextScheduled->isFuture()) return null;
+
+        try {
+            return $this->createNextCycle($wishi);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 

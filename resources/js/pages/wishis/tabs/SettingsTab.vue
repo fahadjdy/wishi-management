@@ -17,7 +17,6 @@ const form = reactive({
     winner_selection_mode: 'auto',
     min_credit_score: null,
     max_active_wishis_per_member: null,
-    block_if_missed_payments: false,
     tender_start_time: null,
     tender_end_time: null,
     status: 'active',
@@ -34,7 +33,6 @@ watch(wishi, (w) => {
         winner_selection_mode: w.winner_selection_mode,
         min_credit_score: w.min_credit_score,
         max_active_wishis_per_member: w.max_active_wishis_per_member,
-        block_if_missed_payments: w.block_if_missed_payments,
         tender_start_time: w.tender_start_time?.slice(0, 5) || null,
         tender_end_time: w.tender_end_time?.slice(0, 5) || null,
         status: w.status,
@@ -82,10 +80,6 @@ async function save() {
                 <label class="flex items-start gap-3">
                     <input v-model="form.auto_join" type="checkbox" class="rounded text-indigo-600 mt-1" />
                     <div><div class="font-medium">Allow auto-join via shareable link</div></div>
-                </label>
-                <label class="flex items-start gap-3">
-                    <input v-model="form.block_if_missed_payments" type="checkbox" class="rounded text-indigo-600 mt-1" />
-                    <div><div class="font-medium">Block if member has missed payments elsewhere</div></div>
                 </label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>

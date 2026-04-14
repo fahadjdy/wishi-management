@@ -111,8 +111,4 @@ class User extends Authenticatable
             ->count();
     }
 
-    public function hasMissedContributions(): bool
-    {
-        return $this->contributions()->where('status', 'missed')->exists();
-    }
 }

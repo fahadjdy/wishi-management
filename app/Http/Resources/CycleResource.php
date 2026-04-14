@@ -44,6 +44,10 @@ class CycleResource extends JsonResource
             'tender_opens_at' => optional($this->tender_opens_at)?->toIso8601String(),
             'tender_closes_at' => optional($this->tender_closes_at)?->toIso8601String(),
             'is_bidding_open' => $this->isBiddingOpen(),
+            // Count of contributions that are not yet paid (paid_at IS NULL).
+            // Frontend uses this to flag prior cycles in warning color when some
+            // member hasn't paid yet.
+            'unpaid_contributions_count' => (int) $this->contributions()->whereNull('paid_at')->count(),
             'winner' => $this->when($isAdmin || $isSelfWinner, new UserSummaryResource($this->whenLoaded('winner'))),
             'viewer_is_winner' => (bool) $isSelfWinner,
             'viewer_is_admin' => (bool) $isAdmin,

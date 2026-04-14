@@ -45,7 +45,6 @@ const form = reactive({
     hybrid_pattern: ['random', 'random', 'tender'],
     min_credit_score: null,
     max_active_wishis_per_member: null,
-    block_if_missed_payments: false,
     tender_start_time: '10:00',
     tender_end_time: '20:00',
     status: 'draft',
@@ -252,13 +251,6 @@ async function submit() {
                     <input v-model.number="form.max_active_wishis_per_member" type="number" min="1" max="50" class="form-input" placeholder="e.g. 3" />
                 </div>
             </div>
-            <label class="flex items-start gap-3">
-                <input v-model="form.block_if_missed_payments" type="checkbox" class="rounded text-indigo-600 focus:ring-indigo-500 mt-1" />
-                <div>
-                    <div class="font-medium">Block enrolment if member has missed payments elsewhere</div>
-                    <div class="text-xs text-gray-500">Adds an extra layer of trust to your pool.</div>
-                </div>
-            </label>
         </div>
 
         <!-- Step 3: Draw type -->
