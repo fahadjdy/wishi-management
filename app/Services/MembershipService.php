@@ -74,8 +74,8 @@ class MembershipService
         if (! in_array($wishi->status, ['planned', 'active', 'draft'], true)) {
             throw new \DomainException('This WISHI is no longer accepting members.');
         }
-        if ($wishi->activeMembers()->count() >= (int) $wishi->total_members) {
-            throw new \DomainException('This WISHI is already at full capacity.');
+        if ($wishi->activeMembers()->count() >= $wishi->memberCapacity()) {
+            throw new \DomainException('This WISHI is already at full capacity. Admin occupies seat #1, so only (total_members − 1) members can be invited.');
         }
 
         return DB::transaction(function () use ($wishi, $user, $actor) {
@@ -115,7 +115,7 @@ class MembershipService
         if (! $member->invited_by_admin || $member->status !== 'pending') {
             throw new \DomainException('No pending invitation to accept.');
         }
-        if ($member->wishi->activeMembers()->count() >= (int) $member->wishi->total_members) {
+        if ($member->wishi->activeMembers()->count() >= $member->wishi->memberCapacity()) {
             throw new \DomainException('WISHI is already full.');
         }
         return DB::transaction(function () use ($member, $user) {
@@ -153,7 +153,7 @@ class MembershipService
     {
         return DB::transaction(function () use ($member, $actor) {
             $current = $member->wishi->activeMembers()->count();
-            if ($current >= $member->wishi->total_members) {
+            if ($current >= $member->wishi->memberCapacity()) {
                 throw new \DomainException('WISHI is already at full capacity.');
             }
             $member->update([
@@ -219,8 +219,10 @@ class MembershipService
         }
         DB::transaction(function () use ($member) {
             Wishi::whereKey($member->wishi_id)->lockForUpdate()->first();
-            $next = (int) WishiMember::where('wishi_id', $member->wishi_id)
-                ->max('token_no') + 1;
+            // Token #1 is reserved for the admin/organizer (cycle-#1 payout).
+            // Real members therefore start at token #2 and count upward.
+            $max = (int) WishiMember::where('wishi_id', $member->wishi_id)->max('token_no');
+            $next = $max < 2 ? 2 : $max + 1;
             $member->update(['token_no' => $next]);
         });
     }
@@ -235,17 +237,8 @@ class MembershipService
             throw new \DomainException('This WISHI is no longer accepting members.');
         }
 
-        if ($wishi->min_credit_score && (int) $user->credit_score < (int) $wishi->min_credit_score) {
-            throw new \DomainException("Your credit score is below the minimum required ({$wishi->min_credit_score}).");
-        }
-
-        $maxPerMember = $wishi->max_active_wishis_per_member ?? $user->max_active_wishis;
-        if ($maxPerMember && $user->activeWishisCount() >= (int) $maxPerMember) {
-            throw new \DomainException("You have reached the maximum number of active WISHIs ({$maxPerMember}).");
-        }
-
         $current = $wishi->activeMembers()->count();
-        if ($current >= $wishi->total_members) {
+        if ($current >= $wishi->memberCapacity()) {
             throw new \DomainException('This WISHI is already at full capacity.');
         }
     }
@@ -260,7 +253,7 @@ class MembershipService
             return;
         }
         $active = $wishi->activeMembers()->count();
-        if ($active < (int) $wishi->total_members) {
+        if ($active < $wishi->memberCapacity()) {
             return;
         }
 

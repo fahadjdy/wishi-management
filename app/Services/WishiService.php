@@ -21,6 +21,10 @@ class WishiService
     public function create(User $creator, array $data): Wishi
     {
         return DB::transaction(function () use ($creator, $data) {
+            // duration_months always equals total_members (one cycle per member,
+            // including cycle #1 organizer payout to admin). Not asked of admin.
+            $data['duration_months'] = (int) $data['total_members'];
+
             $wishi = Wishi::create(array_merge($data, [
                 'created_by' => $creator->id,
                 // New WISHIs go straight to `planned` so members can discover and
@@ -115,7 +119,7 @@ class WishiService
             }
 
             $active = $wishi->activeMembers()->count();
-            $needed = (int) $wishi->total_members;
+            $needed = $wishi->memberCapacity();
             if ($active < $needed) {
                 $remaining = $needed - $active;
                 throw new \DomainException(

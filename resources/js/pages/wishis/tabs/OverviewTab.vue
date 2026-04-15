@@ -168,7 +168,7 @@ function dueColor(days) {
                 <h3 class="font-semibold mb-3">Quick info</h3>
                 <dl class="text-sm space-y-2">
                     <div class="flex justify-between"><dt class="text-gray-500">Admin</dt><dd class="font-medium">{{ wishi.creator?.name || '—' }}</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">Members</dt><dd class="font-medium">{{ wishi.active_members_count ?? '—' }} / {{ wishi.total_members }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">Members</dt><dd class="font-medium">{{ wishi.total_joined ?? ((wishi.active_members_count ?? 0) + 1) }} / {{ wishi.total_members }}</dd></div>
                     <div class="flex justify-between"><dt class="text-gray-500">Monthly</dt><dd class="font-medium">{{ formatINR(wishi.monthly_contribution) }}</dd></div>
                     <div class="flex justify-between"><dt class="text-gray-500">Pool</dt><dd class="font-medium">{{ formatINR(wishi.total_pool) }}</dd></div>
                     <div v-if="isAdmin" class="flex justify-between"><dt class="text-gray-500">Approval</dt><dd class="font-medium">{{ wishi.require_approval ? 'Required' : 'Open' }}</dd></div>

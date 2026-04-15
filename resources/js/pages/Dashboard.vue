@@ -176,9 +176,9 @@ function urgencyLabel(days) {
                                 <span class="text-xs text-gray-500">· {{ formatDate(w.start_date) }}</span>
                             </div>
                             <div class="flex items-center gap-2 mt-2 flex-wrap text-xs text-gray-600">
-                                <span class="badge-gray">{{ w.active_members }}/{{ w.total_members }} members</span>
+                                <span class="badge-gray">{{ (w.active_members ?? 0) + 1 }}/{{ w.total_members }} members</span>
                                 <span v-if="w.is_full" class="badge-success">Full — ready to start</span>
-                                <span v-else class="badge-warning">{{ w.total_members - w.active_members }} seat{{ w.total_members - w.active_members !== 1 ? 's' : '' }} left</span>
+                                <span v-else class="badge-warning">{{ (w.member_capacity ?? (w.total_members - 1)) - w.active_members }} seat{{ (w.member_capacity ?? (w.total_members - 1)) - w.active_members !== 1 ? 's' : '' }} left</span>
                                 <span class="text-gray-500">· {{ formatINR(w.monthly_contribution) }}/month · {{ w.duration_months }} cycles</span>
                             </div>
                         </div>
@@ -208,7 +208,7 @@ function urgencyLabel(days) {
                         <span class="font-semibold">{{ formatINR(w.monthly_contribution) }}</span>/month · {{ w.duration_months }} cycles · <span class="capitalize">{{ w.cycle_type }}</span>
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap text-xs">
-                        <span class="badge-gray">{{ w.active_members }}/{{ w.total_members }} members</span>
+                        <span class="badge-gray">{{ (w.active_members ?? 0) + 1 }}/{{ w.total_members }} members</span>
                         <span class="badge-info">{{ w.seats_left }} seat{{ w.seats_left !== 1 ? 's' : '' }} left</span>
                         <span v-if="w.start_date" class="text-gray-500">· starts {{ formatDate(w.start_date) }}</span>
                     </div>

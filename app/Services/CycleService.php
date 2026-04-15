@@ -76,16 +76,16 @@ class CycleService
             $tenderOpens = null;
             $tenderCloses = null;
             if ($mode === 'tender') {
-                // Bidding window: opens at the WISHI's configured `tender_start_time`
-                // (default 06:00) on the cycle's own start date, and closes the same
-                // day at `tender_end_time` (default 20:00). Single-day window.
-                $tenderOpens = $dueDate->copy()
-                    ->setTimeFromTimeString($wishi->tender_start_time ?: '06:00:00');
-                $tenderCloses = $dueDate->copy()
-                    ->setTimeFromTimeString($wishi->tender_end_time ?: '20:00:00');
+                // Bidding window opens at the WISHI's `wishi_opening_time` on the
+                // cycle's start date, and stays open until the next cycle's start
+                // (i.e. the full cycle span). For the final cycle this still uses
+                // startDateForCycle(N+1) so there's always a concrete close time.
+                $openingTime = $wishi->wishi_opening_time ?: '00:00:00';
+                $tenderOpens = $dueDate->copy()->setTimeFromTimeString($openingTime);
+                $tenderCloses = $this->startDateForCycle($wishi, $next + 1)
+                    ->setTimeFromTimeString($openingTime);
                 if ($tenderCloses->lessThanOrEqualTo($tenderOpens)) {
-                    // Guard against misconfigured times — ensure close is strictly after open.
-                    $tenderCloses = $tenderOpens->copy()->addHours(1);
+                    $tenderCloses = $tenderOpens->copy()->addDay();
                 }
             }
 
@@ -137,6 +137,21 @@ class CycleService
         foreach ($members as $member) {
             Contribution::firstOrCreate(
                 ['cycle_id' => $cycle->id, 'user_id' => $member->user_id],
+                [
+                    'wishi_id' => $wishi->id,
+                    'amount' => $wishi->monthly_contribution,
+                    'status' => 'pending',
+                    'due_date' => $dueDate,
+                ]
+            );
+        }
+
+        // Admin (organizer) contributes too — admin holds seat #1 and the
+        // pool is `monthly × total_members` (FLOW.md §6). Admin is not
+        // stored in wishi_members, so we add their contribution row here.
+        if ($wishi->created_by) {
+            Contribution::firstOrCreate(
+                ['cycle_id' => $cycle->id, 'user_id' => $wishi->created_by],
                 [
                     'wishi_id' => $wishi->id,
                     'amount' => $wishi->monthly_contribution,

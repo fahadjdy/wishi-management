@@ -83,11 +83,13 @@ Invitation is the default UX. Admin-created accounts typically come with invitat
 
 Guards enforced in `MembershipService`:
 - Admin cannot join their own WISHI (neither direction).
-- WISHI status must be `draft` or `active`.
-- Min credit score (if set on WISHI) must be met for `requestJoin`.
-- `max_active_wishis_per_member` cap (if set) must not be exceeded.
+- WISHI status must be `draft` / `planned` / `active`.
 - Capacity check (can't exceed `total_members`).
-- `invite` skips credit/cap checks (admin has explicitly vetted the member by clicking Invite).
+- `invite` simply bypasses the "no self-join" rule for admin-invited flows.
+
+> Historical: `min_credit_score`, `max_active_wishis_per_member`, and the
+> `block_if_missed_payments` gate used to live here. All three were removed
+> (2026-04-15) — admin vetting replaces automated eligibility gates.
 
 Once accepted/approved, member gets a `MemberStatusNotification` in their inbox. The invitation carries a `MemberStatusNotification(status='invited')` push when sent. In parallel, the WISHI admin (creator) receives a **MemberJoinedNotification** whenever:
 - a user posts a new join request (`event='requested'`),
@@ -96,13 +98,38 @@ Once accepted/approved, member gets a `MemberStatusNotification` in their inbox.
 
 ### Token numbers
 
-Every approved member is assigned a sequential `token_no` (1..n) on the `wishi_members` row, unique per WISHI. Assignment happens once — when the member first transitions to `approved` (via `requestJoin` auto-approve, `acceptInvite`, or admin `approve`). Tokens are stable: removal does **not** renumber remaining members, so gaps are allowed. The admin (creator) is never stored as a `wishi_members` row, so they hold no token. Surfaced in `WishiMemberResource` and the Members tab. `MembershipService::assignTokenIfMissing()` locks the WISHI row while computing `max(token_no)+1` to make concurrent approvals safe.
+Every approved member is assigned a sequential `token_no` on the `wishi_members` row, unique per WISHI. Assignment happens once — when the member first transitions to `approved` (via `requestJoin` auto-approve, `acceptInvite`, or admin `approve`). Tokens are stable: removal does **not** renumber remaining members, so gaps are allowed.
+
+**Token #1 is reserved for the admin/organizer** (cycle-#1 organizer payout, see §6). The admin is not stored in `wishi_members`, but is surfaced as a virtual Member #1 in the Members tab payload. Real members therefore start at **token #2** and count upward. `MembershipService::assignTokenIfMissing()` computes `max($max, 1) + 1` under a WISHI row lock so the first real approval lands on #2 and concurrent approvals can't collide. (Rule effective 2026-04-15 — older data may still have a member on token #1; not backfilled.)
 
 ### Admin-created accounts
 
 `POST /api/v1/admin/users` (platform admin only) — accepts `name`, `email`, `phone?`, `password`, `credit_score?`, `is_admin?`. Password is hashed via `User::$casts`. Email verified immediately.
 
 The admin UI (`/admin/users`) has a **"+ Create member account"** button that opens a modal with auto-generated passwords so the admin can paste the credentials to the member over WhatsApp/SMS/etc.
+
+### Members table row tinting
+
+Each row in the Members table is tinted based on a per-user `payment_status` computed in `AdminUserResource`:
+
+- **`late`** → light red (`bg-red-50`). User has ≥1 contribution with `paid_at IS NULL` AND (`due_date < today` OR `status IN ('late','missed')`). Takes priority over `advance`.
+- **`advance`** → light green (`bg-emerald-50`). User has ≥1 contribution with `paid_at IS NOT NULL` AND `due_date > today` (i.e. paid a future cycle ahead of schedule).
+- **`normal`** → default hover-only styling.
+
+Row tooltip shows the exact count. Canonical paid indicator (`paid_at IS NOT NULL`) is used — consistent with §9.
+
+### Member cancellation window
+
+Admin can cancel (`DELETE /wishis/{wishi}/members/{member}` → `MembershipService::remove()`) any approved/pending member **only while the WISHI is in `draft` or `planned` state**. Once the admin clicks **Start WISHI** and `status` transitions to `active`, the Cancel button disappears from the Members tab and `WishiMemberPolicy::remove()` returns `false`. Rationale: once cycle #1 opens, contributions + token assignments are baked in; removing a member mid-flight would orphan cycle rows and break pool math. If a member absolutely must be removed post-start, the admin must cancel the entire WISHI and create a replacement.
+
+### Start WISHI entry points
+
+The "🚀 Start WISHI now" button is rendered for the admin in two places whenever `can_start = true` (i.e. `status ∈ {draft, planned}` AND `active_members_count >= memberCapacity()`):
+
+- On the WISHI **card** in `/wishis` listing (`Index.vue`).
+- On the WISHI **detail** page header banner (`Show.vue`).
+
+Both buttons call `POST /wishis/{uuid}/activate` → `WishiService::activate()`. Admin also receives a `WishiFullNotification` the moment `notifyIfJustFilled()` detects capacity was just reached — so they get a push + see both buttons the next time they load the dashboard.
 
 ---
 
@@ -141,7 +168,13 @@ contribution_open  ──► (all members paid) ──►  selection_pending ─
 - UI: 👑 "Organizer Payout" badge, winner shown as admin, no "Select winner" or "Place bid" buttons.
 - **Members tab** prepends the admin as a virtual "Member #1 (👑 Organizer)" row (flag `is_organizer_virtual=true` on the API payload) — admin appears first in the list even though they are still not stored in `wishi_members`. Real member tokens remain 1..n as assigned to approved members.
 
-This is why a WISHI with `total_members = 6` and `duration_months = 6` ends up with admin winning one cycle and 5 members winning the remaining 5. If the admin wants every member to get a turn, they should set `duration_months = total_members + 1`.
+This is why a WISHI with `total_members = 6` ends up with admin winning cycle #1 and the 5 invited members winning cycles #2–#6 (one each). Admin-as-seat-#1 is canonical now — there is no 6th unlucky member.
+
+> **`total_members` includes the admin** (rule effective 2026-04-15). The admin holds seat #1 as organizer; only `total_members − 1` members can be invited / approved. `Wishi::memberCapacity()` is the single source of truth for **invitable seats** — every capacity check (invite, accept, approve, request-join, activate, can_start, seats_remaining, is_full) uses it. Frontend exposes `member_capacity` on `WishiResource`.
+>
+> **Admin contributes equally with every member** (rule effective 2026-04-15). `Wishi::totalPool()` is `monthly_contribution × total_members` (admin pays the monthly contribution every cycle, including cycle #1). Admin still receives the cycle-#1 organizer payout — economically the admin breaks even (pays in `monthly × total_members` over the full WISHI, receives the same amount back in cycle #1). `CycleService::bootstrapContributions()` creates a Contribution row for `wishi.created_by` alongside every approved member's row, so the admin sees their own pending dues on their dashboard like any other member. The admin is still NOT stored in `wishi_members` — only their `Contribution` rows materialise.
+>
+> `duration_months` is no longer asked on the creation form. It is auto-set to `total_members` by `WishiService::create` — giving one cycle per seat (cycle #1 = admin, cycles 2..N = the invited members). The column still exists and is read throughout the UI/services — only the admin-input field was removed.
 
 ---
 
@@ -150,10 +183,11 @@ This is why a WISHI with `total_members = 6` and `duration_months = 6` ends up w
 | Type | How cycles run |
 |---|---|
 | `random` | Every cycle uses a cryptographic random draw (`random_bytes`) among members who haven't won yet. Seed stored for transparency. |
-| `tender` | Every cycle opens a bidding window (`tender_opens_at` → `tender_closes_at`). Admin picks single or multiple winners. |
-| `hybrid` | Each cycle's mode is taken from `hybrid_pattern` — see §8. |
+| `hybrid` | Each cycle's mode is taken from `hybrid_pattern` — see §8. Individual cycles inside a hybrid pattern can still be `tender`. |
 
 Cycle #1 is always `random` (see §6), regardless of WISHI type.
+
+> Pure `tender` WISHIs were removed from the creation form on 2026-04-15 — only `random` and `hybrid` are selectable. The enum value `tender` is retained in DB for back-compat with existing WISHIs and as a valid step inside `hybrid_pattern`. `StoreWishiRequest` enforces `cycle_type ∈ {random, hybrid}`.
 
 ---
 
@@ -222,13 +256,13 @@ Winner announcement is **locked until the cycle's `contribution_due_at` is reach
 
 ### Tender bidding window (all tender cycles)
 
-Bidding is a **single-day** window, opening and closing on the cycle's own start date:
+Bidding spans the full cycle window, driven by a single time-of-day on the WISHI:
 
-- **Opens** at `wishi.tender_start_time` (default `06:00`) on the cycle's start date.
-- **Closes** at `wishi.tender_end_time` (default `20:00`) on the same date.
-- Both times are configured once on the WISHI and reused for every tender cycle.
+- **Opens** at `wishi.wishi_opening_time` on the cycle's start date.
+- **Closes** at `wishi.wishi_opening_time` on the **next** cycle's start date (i.e. the whole cycle span is the bidding window). For the final cycle, closing uses the same "next" computation from `startDateForCycle(N+1)` so there's always a concrete close.
+- A single `wishi_opening_time` is configured on WISHI creation and reused for every tender cycle. There is no separate `tender_start_time` / `tender_end_time` / `bidding_window_days` — those were removed (2026-04-15).
 
-Example: WISHI starts 1-Jan-2026 (cycle #1 is the organizer payout). Cycle #2 starts 1-Feb-2026 — bidding opens at 06:00 on 1-Feb-2026 and closes at 20:00 on 1-Feb-2026. After close, no new bids are accepted; the admin can declare the winner (either auto-lowest via `selectTenderWinner` or manual/multi via `selectTenderMultiWinner`) but only after the `contribution_due_at` maturity guard allows it (see §10 maturity guard).
+Example: WISHI starts 1-Jan-2026 with `wishi_opening_time='00:00'`. Cycle #2 starts 1-Feb-2026 — bidding opens at 00:00 on 1-Feb-2026 and closes at 00:00 on 1-Mar-2026. After close, no new bids are accepted; the admin can declare the winner (auto-lowest via `selectTenderWinner` or manual/multi via `selectTenderMultiWinner`) only after the `contribution_due_at` maturity guard allows it (see §10 maturity guard).
 
 ### Tender mode — single winner
 `WinnerSelectionService::selectTenderWinner` — picks the lowest bid, stores surplus as `deferred_amount`.
@@ -397,7 +431,7 @@ All three are needed — UI hiding is courtesy; the API must never leak admin-on
 | GET/POST | `/wishis/{uuid}/cycles/{c}/tenders` | List bids / place bid (immutable) |
 | GET | `/wishis/{uuid}/audit-logs` | Wishi-scoped audit |
 | GET | `/admin/dashboard` | Platform analytics (platform admin only) |
-| GET | `/admin/users` | All users, search + filter |
+| GET | `/admin/users` | All users, search + filter. Each row carries `payment_status` (`late` \| `advance` \| `normal`) + `late_contributions_count` + `advance_contributions_count` so the Members table can tint rows red/green without a second round-trip |
 | POST | `/admin/users` | **Create a new account (replaces self-registration)** |
 | GET | `/admin/users/{id}` | User detail — also returns `active_wishis`, `pending_contributions`, `paid_contributions` (with `can_undo` flag) and `totals` so the admin Members page can render the member-profile modal in one round-trip |
 | PUT | `/admin/users/{id}/toggle-admin` | Grant/revoke platform admin |

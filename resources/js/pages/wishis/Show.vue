@@ -129,132 +129,107 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
 
 <template>
     <div v-if="!wishi" class="text-center py-16 text-gray-400">Loading…</div>
-    <div v-else class="space-y-5">
-        <!-- Draft (admin-only): not yet published -->
-        <div v-if="wishi.status === 'draft' && isAdmin" class="surface-padded bg-gray-50 border-gray-200">
-            <div class="flex items-start gap-3 flex-wrap">
-                <div class="text-2xl">📝</div>
-                <div class="flex-1 min-w-0">
-                    <h3 class="font-semibold text-gray-900">Draft — not yet public</h3>
-                    <p class="text-sm text-gray-700 mt-0.5">Only you can see this WISHI. Publish it to make it visible to members in the Discover list so they can request to join.</p>
-                </div>
-                <button @click="publishWishi" :disabled="publishing" class="btn-primary shrink-0">
-                    {{ publishing ? 'Publishing…' : '📢 Publish WISHI' }}
-                </button>
-            </div>
-        </div>
-
-        <!-- Planned / not-full: waiting for members -->
-        <div v-else-if="wishi.status === 'planned' && !wishi.is_full" class="surface-padded bg-amber-50 border-amber-200">
-            <div class="flex items-start gap-3 flex-wrap">
-                <div class="text-2xl">⏳</div>
-                <div class="flex-1 min-w-0">
-                    <h3 class="font-semibold text-amber-900">Waiting for members</h3>
-                    <p class="text-sm text-amber-800 mt-0.5">
-                        {{ wishi.active_members_count }} / {{ wishi.total_members }} members joined.
-                        <strong>{{ wishi.seats_remaining }} more</strong> needed before this WISHI can start.
-                        <span v-if="wishi.pending_members_count"> · {{ wishi.pending_members_count }} pending approval.</span>
-                    </p>
-                    <p class="text-xs text-amber-700 mt-1">Planned start: {{ formatDate(wishi.start_date) }}. WISHI cannot open before this date.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Planned / full: ready for admin to start -->
-        <div v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" class="surface-padded bg-emerald-50 border-emerald-200">
-            <div class="flex items-start gap-3 flex-wrap">
-                <div class="text-2xl">✅</div>
-                <div class="flex-1 min-w-0">
-                    <h3 class="font-semibold text-emerald-900">Ready to start</h3>
-                    <p class="text-sm text-emerald-800 mt-0.5">All {{ wishi.total_members }} members have joined. Start the WISHI on or after {{ formatDate(wishi.start_date) }} to open cycle #1 — every member will be notified.</p>
-                </div>
-                <button @click="startWishi" :disabled="starting" class="btn-success shrink-0">
-                    {{ starting ? 'Starting…' : '🚀 Start WISHI now' }}
-                </button>
-            </div>
-        </div>
-
-        <!-- Planned / full / non-admin: waiting message -->
-        <div v-else-if="wishi.status === 'planned' && wishi.can_start && !isAdmin" class="surface-padded bg-indigo-50 border-indigo-200">
-            <h3 class="font-semibold text-indigo-900">All members joined</h3>
-            <p class="text-sm text-indigo-800 mt-0.5">Waiting for the admin ({{ wishi.creator?.name }}) to start this WISHI.</p>
-        </div>
-
-        <!-- Header -->
-        <div class="surface-padded">
-            <div class="flex flex-wrap items-start justify-between gap-4">
+    <div v-else class="space-y-3">
+        <!-- =============================================================
+             COMPACT HEADER CARD — one card with name + badges + pool +
+             inline alert + stats strip + progress bar. Designed to fit in
+             one viewport without scrolling.
+        ============================================================== -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <!-- Top row: name + badges + pool + primary action -->
+            <div class="px-5 py-4 flex items-start gap-4 flex-wrap">
                 <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                    <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                         <span :class="statusBadge[wishi.status]" class="capitalize">{{ wishiStatusLabels[wishi.status] }}</span>
-                        <span class="badge-brand capitalize">{{ wishi.cycle_type }} draws</span>
-                        <span v-if="wishi.cycle_type === 'hybrid'" class="badge-gray">{{ wishi.auto_cycles_count }}A / {{ wishi.tender_cycles_count }}T</span>
+                        <span class="badge-brand capitalize">{{ wishi.cycle_type }}</span>
+                        <span v-if="wishi.cycle_type === 'hybrid'" class="badge-gray">{{ wishi.auto_cycles_count }}A/{{ wishi.tender_cycles_count }}T</span>
                         <span class="badge-info capitalize">
                             {{ wishi.cycle_frequency || 'monthly' }}<span v-if="wishi.cycle_frequency === 'custom' && wishi.cycle_interval_days"> · every {{ wishi.cycle_interval_days }}d</span>
                         </span>
-                        <span v-if="isAdmin" class="badge-brand">You're admin</span>
+                        <span v-if="isAdmin" class="badge-brand">Admin</span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 truncate">{{ wishi.name }}</h1>
-                    <p class="text-sm text-gray-500 mt-1">
-                        <span v-if="wishi.status === 'draft'">Planned start: {{ formatDate(wishi.start_date) }} (not yet fixed)</span>
+                    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 leading-tight truncate">{{ wishi.name }}</h1>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        <span v-if="wishi.status === 'draft'">Planned start {{ formatDate(wishi.start_date) }}</span>
                         <span v-else>Started {{ formatDate(wishi.start_date) }}</span>
-                        · {{ wishi.total_members }} members
+                        · {{ wishi.total_members }} members (incl. admin) · Created by {{ wishi.creator?.name || '—' }}
                     </p>
                 </div>
-                <div class="text-left sm:text-right">
-                    <div class="text-sm text-gray-500">Pool size</div>
-                    <div class="text-2xl font-bold">{{ formatINR(wishi.total_pool) }}</div>
-                    <div class="text-xs text-gray-400">{{ formatINR(wishi.monthly_contribution) }} × {{ wishi.total_members }}</div>
+
+                <div class="flex items-start gap-3 shrink-0">
+                    <div class="text-right">
+                        <div class="text-[11px] uppercase tracking-wide text-gray-400">Pool / cycle</div>
+                        <div class="text-2xl font-bold text-gray-900 leading-none">{{ formatINR(wishi.total_pool) }}</div>
+                        <div class="text-[11px] text-gray-400 mt-0.5">
+                            {{ formatINR(wishi.monthly_contribution) }} × {{ wishi.total_members }} members
+                        </div>
+                    </div>
+                    <button v-if="wishi.status === 'draft' && isAdmin" @click="publishWishi" :disabled="publishing" class="btn-primary btn-sm self-center">
+                        {{ publishing ? 'Publishing…' : '📢 Publish' }}
+                    </button>
+                    <button v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" @click="startWishi" :disabled="starting" class="btn-success btn-sm self-center">
+                        {{ starting ? 'Starting…' : '🚀 Start WISHI' }}
+                    </button>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500">Opened cycles</div>
-                    <div class="text-xl font-bold text-emerald-600">{{ wishi.cycles_completed ?? 0 }} / {{ wishi.duration_months }}</div>
+            <!-- Inline alert strip (single line, no extra card) -->
+            <div v-if="wishi.status === 'draft' && isAdmin" class="px-5 py-2 bg-gray-50 border-y border-gray-100 text-xs text-gray-700 flex items-center gap-2">
+                <span>📝</span><span><strong>Draft</strong> — only you can see this. Publish to let members discover & join.</span>
+            </div>
+            <div v-else-if="wishi.status === 'planned' && !wishi.is_full" class="px-5 py-2 bg-amber-50 border-y border-amber-100 text-xs text-amber-900 flex items-center gap-2">
+                <span>⏳</span>
+                <span>
+                    <strong>Waiting for members</strong> — {{ wishi.seats_remaining }} more needed before start.
+                    <span v-if="wishi.pending_members_count"> · {{ wishi.pending_members_count }} pending approval.</span>
+                    Cannot open before {{ formatDate(wishi.start_date) }}.
+                </span>
+            </div>
+            <div v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" class="px-5 py-2 bg-emerald-50 border-y border-emerald-100 text-xs text-emerald-900 flex items-center gap-2">
+                <span>✅</span><span><strong>Ready to start</strong> — all {{ wishi.total_members }} seats filled. Click <em>Start WISHI</em> to open cycle #1.</span>
+            </div>
+            <div v-else-if="wishi.status === 'planned' && wishi.is_full && !isAdmin" class="px-5 py-2 bg-indigo-50 border-y border-indigo-100 text-xs text-indigo-900 flex items-center gap-2">
+                <span>⏸️</span><span><strong>All members joined.</strong> Waiting for {{ wishi.creator?.name }} to start this WISHI.</span>
+            </div>
+
+            <!-- Stats strip — inline, divided, no card-per-stat -->
+            <div class="px-5 py-3 bg-gradient-to-b from-gray-50/60 to-white grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+                <div class="px-3 first:pl-0">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Cycles opened</div>
+                    <div class="text-base font-bold text-emerald-600 mt-0.5">{{ wishi.cycles_completed ?? 0 }}<span class="text-gray-300 font-normal"> / {{ wishi.duration_months }}</span></div>
                 </div>
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500">Remaining</div>
-                    <div class="text-xl font-bold text-amber-600">{{ wishi.cycles_remaining ?? wishi.duration_months }}</div>
+                <div class="px-3">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Remaining</div>
+                    <div class="text-base font-bold text-amber-600 mt-0.5">{{ wishi.cycles_remaining ?? wishi.duration_months }}</div>
                 </div>
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500">Active members</div>
-                    <div class="text-xl font-bold">{{ wishi.active_members_count ?? '—' }} / {{ wishi.total_members }}</div>
+                <div class="px-3">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Active members</div>
+                    <div class="text-base font-bold text-gray-900 mt-0.5">{{ wishi.total_joined ?? ((wishi.active_members_count ?? 0) + 1) }}<span class="text-gray-300 font-normal"> / {{ wishi.total_members }}</span></div>
                 </div>
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500">Deferred pending</div>
-                    <div class="text-xl font-bold text-amber-700">{{ formatINR(wishi.deferred_pending_total || 0) }}</div>
+                <div class="px-3">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Deferred pending</div>
+                    <div class="text-base font-bold mt-0.5" :class="(wishi.deferred_pending_total || 0) > 0 ? 'text-amber-700' : 'text-gray-400'">{{ formatINR(wishi.deferred_pending_total || 0) }}</div>
                 </div>
             </div>
 
-            <div v-if="wishi.status !== 'draft'" class="mt-4">
-                <div class="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                    <span>Cycle progress</span>
-                    <span>{{ wishi.current_cycle }} / {{ wishi.duration_months }}</span>
-                </div>
-                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all" :style="{ width: progress + '%' }"></div>
-                </div>
-            </div>
-            <div v-else class="mt-4">
-                <div class="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                    <span>Members joined</span>
-                    <span>{{ wishi.active_members_count }} / {{ wishi.total_members }}</span>
-                </div>
-                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full transition-all" :class="wishi.is_full ? 'bg-emerald-500' : 'bg-amber-500'"
-                        :style="{ width: Math.min(100, (wishi.active_members_count / wishi.total_members) * 100) + '%' }"></div>
-                </div>
+            <!-- Slim progress bar (no labels — they're covered by stats above) -->
+            <div class="h-1 bg-gray-100">
+                <div v-if="wishi.status !== 'draft'" class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all" :style="{ width: progress + '%' }"></div>
+                <div v-else class="h-full transition-all" :class="wishi.is_full ? 'bg-emerald-500' : 'bg-amber-500'"
+                    :style="{ width: Math.min(100, ((wishi.total_joined ?? (wishi.active_members_count + 1)) / Math.max(1, wishi.total_members)) * 100) + '%' }"></div>
             </div>
         </div>
 
-        <!-- Tabs bar -->
-        <div class="surface overflow-hidden">
-            <nav class="flex overflow-x-auto border-b border-gray-200 bg-gray-50" role="tablist">
+        <!-- =============================================================
+             TABS — flush with header, no top margin
+        ============================================================== -->
+        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <nav class="flex overflow-x-auto border-b border-gray-200 bg-gray-50/60" role="tablist">
                 <button
                     v-for="t in tabs" :key="t.key"
                     @click="switchTab(t)"
                     :aria-selected="activeTab === t.key" role="tab" type="button"
-                    class="px-4 sm:px-5 py-3 text-sm font-medium whitespace-nowrap transition relative focus:outline-none"
+                    class="px-4 sm:px-5 py-2.5 text-sm font-medium whitespace-nowrap transition relative focus:outline-none"
                     :class="activeTab === t.key ? 'text-indigo-700 bg-white' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'"
                 >
                     {{ t.label }}
@@ -262,7 +237,7 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                 </button>
             </nav>
 
-            <div class="p-4 sm:p-5 md:p-6">
+            <div class="p-4 sm:p-5">
                 <OverviewTab v-if="activeTab === 'overview'" />
                 <CyclesTab v-else-if="activeTab === 'cycles'" />
                 <MembersTab v-else-if="activeTab === 'members'" />

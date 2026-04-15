@@ -29,6 +29,7 @@ const filters = reactive({
 });
 const page = ref(1);
 const joiningUuid = ref(null);
+const startingUuid = ref(null);
 
 let debounce;
 function refresh() {
@@ -65,6 +66,20 @@ async function requestJoin(uuid) {
         toast.error(e.response?.data?.message || 'Could not send join request.');
     } finally {
         joiningUuid.value = null;
+    }
+}
+
+async function startWishiFromCard(uuid) {
+    if (! confirm('Start this WISHI now? After starting, no member can be cancelled and cycle #1 (organizer payout) will open.')) return;
+    startingUuid.value = uuid;
+    try {
+        await store.activate(uuid);
+        toast.success('WISHI started.');
+        refresh();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not start WISHI.');
+    } finally {
+        startingUuid.value = null;
     }
 }
 
@@ -206,7 +221,7 @@ const statusChips = computed(() => {
                 <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
                     <div><div class="text-gray-500 text-xs">Monthly</div><div class="font-semibold">{{ formatINR(w.monthly_contribution) }}</div></div>
                     <div><div class="text-gray-500 text-xs">Pool</div><div class="font-semibold">{{ formatINR(w.total_pool) }}</div></div>
-                    <div><div class="text-gray-500 text-xs">Members</div><div class="font-semibold">{{ w.active_members_count ?? '—' }} / {{ w.total_members }}</div></div>
+                    <div><div class="text-gray-500 text-xs">Members</div><div class="font-semibold">{{ w.total_joined ?? ((w.active_members_count ?? 0) + 1) }} / {{ w.total_members }}</div></div>
                     <div>
                         <div class="text-gray-500 text-xs">Opened cycles</div>
                         <div class="font-semibold"><span class="text-emerald-600">{{ w.cycles_completed ?? 0 }}</span><span class="text-gray-400"> / {{ w.duration_months }}</span></div>
@@ -236,11 +251,15 @@ const statusChips = computed(() => {
                 <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
                     <span v-if="w.status === 'draft'">Planned from {{ formatDate(w.start_date) }}</span>
                     <span v-else>Started {{ formatDate(w.start_date) }}</span>
-                    <span v-if="w.cycles_remaining > 0">{{ w.cycles_remaining }} cycle{{ w.cycles_remaining !== 1 ? 's' : '' }} left</span>
+                    <span v-if="w.seats_remaining > 0" class="text-amber-600 font-medium">{{ w.seats_remaining }} seat{{ w.seats_remaining !== 1 ? 's' : '' }} left to join</span>
+                    <span v-else-if="w.cycles_remaining > 0">{{ w.cycles_remaining }} cycle{{ w.cycles_remaining !== 1 ? 's' : '' }} left</span>
                     <span v-else class="text-emerald-600 font-medium">✓ Done</span>
                 </div>
                 <button v-if="w.can_join" @click.stop="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-primary btn-sm w-full mt-3">
                     {{ joiningUuid === w.uuid ? 'Sending…' : (w.require_approval ? '📩 Request to join' : '✅ Join now') }}
+                </button>
+                <button v-if="w.is_admin && w.can_start" @click.stop="startWishiFromCard(w.uuid)" :disabled="startingUuid === w.uuid" class="btn-success btn-sm w-full mt-3">
+                    {{ startingUuid === w.uuid ? 'Starting…' : '🚀 Start WISHI now' }}
                 </button>
             </div>
         </div>

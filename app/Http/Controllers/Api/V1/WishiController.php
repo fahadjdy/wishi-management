@@ -106,7 +106,7 @@ class WishiController extends Controller
                         ->whereIn('status', ['pending', 'approved', 'active'])
                         ->exists();
                 if ($isMineOrJoined) return true;
-                return (int) $w->active_members_count < (int) $w->total_members;
+                return (int) $w->active_members_count < $w->memberCapacity();
             })->values();
             $wishis->setCollection($filtered);
         }

@@ -18,7 +18,7 @@ class WishiResource extends JsonResource
         $isMember = $myMembership !== null;
         $canJoin = $user && ! $isAdmin && ! $isMember
             && in_array($this->status, ['planned', 'active'], true)
-            && (int) $this->total_members > $this->activeMembers()->count();
+            && $this->memberCapacity() > $this->activeMembers()->count();
 
         return [
             'id' => $this->id,
@@ -30,14 +30,17 @@ class WishiResource extends JsonResource
             'my_membership_status' => $myMembership,
             'can_join' => $canJoin,
             'total_members' => (int) $this->total_members,
+            'member_capacity' => $this->memberCapacity(),
             'monthly_contribution' => (float) $this->monthly_contribution,
             'total_pool' => (float) $this->totalPool(),
             'duration_months' => (int) $this->duration_months,
             'cycle_frequency' => $this->cycle_frequency ?: 'monthly',
             'cycle_interval_days' => $this->cycle_interval_days ? (int) $this->cycle_interval_days : null,
             'cycle_day' => $this->cycle_day,
-            'bidding_window_days' => (int) ($this->bidding_window_days ?? 3),
             'start_date' => optional($this->start_date)?->toDateString(),
+            'wishi_opening_time' => $this->wishi_opening_time
+                ? substr((string) $this->wishi_opening_time, 0, 5)
+                : '00:00',
             'current_cycle' => (int) $this->current_cycle,
             'status' => $this->status,
             'auto_join' => (bool) $this->auto_join,
@@ -45,17 +48,21 @@ class WishiResource extends JsonResource
             'winner_selection_mode' => $this->winner_selection_mode,
             'cycle_type' => $this->cycle_type,
             'hybrid_pattern' => $this->hybrid_pattern,
-            'min_credit_score' => $this->min_credit_score,
-            'max_active_wishis_per_member' => $this->max_active_wishis_per_member,
-            'tender_start_time' => $this->tender_start_time,
-            'tender_end_time' => $this->tender_end_time,
             'members_count' => $this->whenCounted('members'),
             'active_members_count' => $this->whenCounted('activeMembers'),
+            // Admin-inclusive active count (admin is always "active"). Used by
+            // UI to show e.g. "5 / 5 members" — admin counted as seat #1.
+            'total_joined' => (int) (($this->relationLoaded('activeMembers')
+                ? $this->activeMembers->count()
+                : $this->activeMembers()->count()) + 1),
             // Pending-approval count is admin-only signal (drives the "ready to start" UI admins own).
             'pending_members_count' => $this->when($isAdmin, fn () => $this->members()->where('status', 'pending')->count()),
-            'seats_remaining' => max(0, (int) $this->total_members - $this->activeMembers()->count()),
-            'is_full' => (int) $this->total_members <= $this->activeMembers()->count(),
-            'can_start' => $this->status === 'draft' && (int) $this->total_members <= $this->activeMembers()->count(),
+            'seats_remaining' => max(0, $this->memberCapacity() - $this->activeMembers()->count()),
+            'is_full' => $this->memberCapacity() <= $this->activeMembers()->count(),
+            'can_start' => $this->when($isAdmin,
+                fn () => in_array($this->status, ['draft', 'planned'], true)
+                    && $this->memberCapacity() <= $this->activeMembers()->count()
+            ),
             'cycles_completed' => $this->cycles()->where('status', 'completed')->count(),
             'cycles_remaining' => max(0, (int) $this->duration_months - $this->cycles()->where('status', 'completed')->count()),
             'tender_cycles_count' => $this->computeTenderCount(),

@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref, reactive, computed, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useAdminStore } from '@/stores/admin';
 import { useAuthStore } from '@/stores/auth';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
@@ -9,6 +9,8 @@ import { formatDate, formatDateTime, formatINR, trustColor } from '@/utils/forma
 
 const store = useAdminStore();
 const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
 const toast = useToast();
 
 useBreadcrumbs(() => [{ label: 'Admin', to: '/admin' }, { label: 'Members' }]);
@@ -140,6 +142,31 @@ async function openProfile(u) {
         profileLoading.value = false;
     }
 }
+
+// Deep-link support: arriving at /admin/users?user=<id> auto-opens that
+// member's profile modal. Used by the "View profile" link in the WISHI
+// Members tab so admins can jump straight from a member row to the full
+// admin profile (active WISHIs, dues, history) in one click.
+async function openProfileById(id) {
+    const numeric = Number(id);
+    if (! numeric) return;
+    let u = (store.users || []).find((x) => Number(x.id) === numeric);
+    if (! u) {
+        try {
+            const data = await store.fetchUser(numeric);
+            u = data?.data || { id: numeric, name: data?.data?.name || 'User' };
+        } catch (e) {
+            toast.error('Could not load that member profile.');
+            return;
+        }
+    }
+    await openProfile(u);
+    // Strip ?user from URL so a refresh doesn't re-open the modal.
+    router.replace({ query: { ...route.query, user: undefined } });
+}
+
+watch(() => route.query.user, (id) => { if (id) openProfileById(id); }, { immediate: false });
+onMounted(() => { if (route.query.user) openProfileById(route.query.user); });
 
 async function profileMarkPaid(c) {
     profileBusyId.value = c.id;
@@ -305,6 +332,10 @@ function daysUntil(dateStr) {
             <h2 class="text-lg font-semibold flex items-center gap-2 mb-2">
                 <span class="w-2 h-2 bg-gray-400 rounded-full"></span> Members
                 <span class="badge-gray">{{ members.length }}</span>
+                <span class="ml-auto flex items-center gap-3 text-xs font-normal text-gray-500">
+                    <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-red-100 border border-red-200"></span>Late payment</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200"></span>Paid in advance</span>
+                </span>
             </h2>
             <div class="surface overflow-x-auto">
                 <table class="w-full text-sm min-w-[900px]">
@@ -319,7 +350,14 @@ function daysUntil(dateStr) {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
-                        <tr v-for="u in members" :key="u.id" class="hover:bg-gray-50" :class="u.deleted_at ? 'opacity-60' : ''">
+                        <tr v-for="u in members" :key="u.id"
+                            :class="[
+                                u.payment_status === 'late' ? 'bg-red-50 hover:bg-red-100' :
+                                u.payment_status === 'advance' ? 'bg-emerald-50 hover:bg-emerald-100' :
+                                'hover:bg-gray-50',
+                                u.deleted_at ? 'opacity-60' : ''
+                            ]"
+                            :title="u.payment_status === 'late' ? `${u.late_contributions_count} late payment(s) pending` : u.payment_status === 'advance' ? `${u.advance_contributions_count} payment(s) made in advance` : ''">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
                                     <div class="w-9 h-9 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">

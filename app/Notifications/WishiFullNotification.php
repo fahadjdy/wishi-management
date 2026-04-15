@@ -22,7 +22,7 @@ class WishiFullNotification extends Notification
         return [
             'kind' => 'wishi_full',
             'title' => '✅ WISHI ready to start',
-            'message' => "'{$this->wishi->name}' has reached full capacity ({$this->wishi->total_members} members). Tap to open and click Start WISHI.",
+            'message' => "'{$this->wishi->name}' has reached full capacity ({$this->wishi->memberCapacity()} members + you). Tap to open and click Start WISHI.",
             'wishi_id' => $this->wishi->id,
             'wishi_uuid' => $this->wishi->uuid,
             'wishi_name' => $this->wishi->name,

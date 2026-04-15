@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 import { useMemberStore } from '@/stores/member';
 import { useWishiStore } from '@/stores/wishi';
 import { useAdminStore } from '@/stores/admin';
@@ -17,6 +17,9 @@ const toast = useToast();
 const filter = ref('all');
 const expanded = ref(new Set());
 const isAdmin = computed(() => wishiStore.currentWishi?.is_admin);
+// Members can only be cancelled while the WISHI is still in draft/planned.
+// Once activated (admin clicked "Start WISHI"), membership is locked.
+const canCancelMembers = computed(() => ['draft', 'planned'].includes(wishiStore.currentWishi?.status));
 
 // Invite a platform user to this WISHI
 const showInviteModal = ref(false);
@@ -24,11 +27,23 @@ const inviteSearch = ref('');
 const inviteLoading = ref(false);
 const inviteResults = computed(() => {
     const q = inviteSearch.value.trim().toLowerCase();
+    // Strip all non-digits so the user can type "+91 98765 43210", "98765-43210"
+    // or "9876543210" and still match a stored phone regardless of formatting.
+    const qDigits = q.replace(/\D/g, '');
     const existingIds = new Set(store.members.map((m) => m.user_id));
     const creatorId = wishiStore.currentWishi?.created_by;
     return (adminStore.users || [])
         .filter((u) => !u.is_admin && u.id !== creatorId && !existingIds.has(u.id) && !u.deleted_at)
-        .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+        .filter((u) => {
+            if (!q) return true;
+            if (u.name?.toLowerCase().includes(q)) return true;
+            if (u.email?.toLowerCase().includes(q)) return true;
+            if (qDigits && u.phone) {
+                const phoneDigits = String(u.phone).replace(/\D/g, '');
+                if (phoneDigits.includes(qDigits)) return true;
+            }
+            return false;
+        })
         .slice(0, 20);
 });
 
@@ -118,13 +133,15 @@ const statusBadge = {
             <div class="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] flex flex-col">
                 <h3 class="font-semibold text-lg">Invite a member</h3>
                 <p class="text-xs text-gray-500 mb-3">Pick an existing user. They'll get an invitation to accept or decline on their dashboard.</p>
-                <input v-model="inviteSearch" type="search" placeholder="Search name or email…" class="form-input mb-3" />
+                <input v-model="inviteSearch" type="search" placeholder="Search by name, email or mobile…" class="form-input mb-3" />
                 <div class="overflow-y-auto space-y-1.5 flex-1">
                     <div v-if="!inviteResults.length" class="text-center py-10 text-sm text-gray-400">No eligible users. Create an account first via Admin → Members.</div>
                     <div v-for="u in inviteResults" :key="u.id" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:border-indigo-300">
                         <div class="min-w-0">
                             <div class="font-medium truncate">{{ u.name }}</div>
-                            <div class="text-xs text-gray-500 truncate">{{ u.email }} · credit {{ u.credit_score }}</div>
+                            <div class="text-xs text-gray-500 truncate">
+                                {{ u.email }}<span v-if="u.phone"> · {{ u.phone }}</span> · credit {{ u.credit_score }}
+                            </div>
                         </div>
                         <button @click="inviteUser(u.id)" :disabled="inviteLoading" class="btn-primary btn-sm shrink-0">Invite</button>
                     </div>
@@ -160,7 +177,7 @@ const statusBadge = {
                         <div v-if="isAdmin" class="flex gap-1.5 mt-2 flex-wrap">
                             <button v-if="m.status === 'pending'" @click="approve(m.id)" class="btn-success btn-sm">Approve</button>
                             <button v-if="m.status === 'pending'" @click="reject(m.id)" class="btn-secondary btn-sm">Reject</button>
-                            <button v-if="['approved','active'].includes(m.status) && !m.is_admin" @click="remove(m.id)" class="btn-danger btn-sm">Remove</button>
+                            <button v-if="['approved','active'].includes(m.status) && !m.is_admin && canCancelMembers" @click="remove(m.id)" class="btn-danger btn-sm" title="Cancel this member (only allowed while WISHI is in draft/planned state)">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -203,9 +220,9 @@ const statusBadge = {
                                         </div>
                                         <div class="text-xs text-gray-500">
                                             <span v-if="m.is_admin" class="text-indigo-600 mr-2">Admin</span>
-                                            <button class="text-indigo-600 hover:underline" @click.stop="toggle(m.id)">
-                                                {{ expanded.has(m.id) ? 'Hide' : 'Show' }} history
-                                            </button>
+                                            <RouterLink v-if="!m.is_organizer_virtual && isAdmin" :to="`/admin/users?user=${m.user_id}`" class="text-indigo-600 hover:underline" @click.stop>
+                                                View profile
+                                            </RouterLink>
                                         </div>
                                     </div>
                                 </div>
@@ -233,7 +250,7 @@ const statusBadge = {
                                 <div v-if="isAdmin" class="flex gap-2 justify-end flex-wrap">
                                     <button v-if="m.status === 'pending'" @click="approve(m.id)" class="btn-success btn-sm">Approve</button>
                                     <button v-if="m.status === 'pending'" @click="reject(m.id)" class="btn-secondary btn-sm">Reject</button>
-                                    <button v-if="['approved','active'].includes(m.status) && !m.is_admin" @click="remove(m.id)" class="btn-danger btn-sm">Remove</button>
+                                    <button v-if="['approved','active'].includes(m.status) && !m.is_admin && canCancelMembers" @click="remove(m.id)" class="btn-danger btn-sm" title="Cancel this member (only allowed while WISHI is in draft/planned state)">Cancel</button>
                                 </div>
                             </td>
                         </tr>

@@ -110,6 +110,7 @@ class DatabaseSeeder extends Seeder
             'duration_months' => $totalMembers,
             'cycle_frequency' => 'monthly',
             'start_date' => $startDate,
+            'wishi_opening_time' => '00:00:00',
             'current_cycle' => 3,
             'status' => 'active',
             'cycle_type' => 'random',
@@ -117,7 +118,9 @@ class DatabaseSeeder extends Seeder
             'require_approval' => false,
         ]);
 
-        $token = 1;
+        // Token #1 is reserved for admin/organizer (FLOW.md §4). Real
+        // members start at #2.
+        $token = 2;
         foreach ($members as $user) {
             WishiMember::create([
                 'wishi_id' => $wishi->id,

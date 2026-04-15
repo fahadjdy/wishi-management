@@ -57,15 +57,16 @@ class DashboardController extends Controller
             ->latest()
             ->limit(12)
             ->get()
-            ->filter(fn ($w) => (int) $w->active_members_count < (int) $w->total_members)
+            ->filter(fn ($w) => (int) $w->active_members_count < $w->memberCapacity())
             ->map(fn ($w) => [
                 'uuid' => $w->uuid,
                 'name' => $w->name,
                 'creator_name' => $w->creator?->name,
                 'monthly_contribution' => (float) $w->monthly_contribution,
                 'total_members' => (int) $w->total_members,
+                'member_capacity' => $w->memberCapacity(),
                 'active_members' => (int) $w->active_members_count,
-                'seats_left' => max(0, (int) $w->total_members - (int) $w->active_members_count),
+                'seats_left' => max(0, $w->memberCapacity() - (int) $w->active_members_count),
                 'duration_months' => (int) $w->duration_months,
                 'cycle_type' => $w->cycle_type,
                 'start_date' => optional($w->start_date)?->toDateString(),
@@ -89,10 +90,11 @@ class DashboardController extends Controller
                     'name' => $w->name,
                     'start_date' => $w->start_date?->toDateString(),
                     'total_members' => (int) $w->total_members,
+                    'member_capacity' => $w->memberCapacity(),
                     'active_members' => $activeMembers,
                     'monthly_contribution' => (float) $w->monthly_contribution,
                     'duration_months' => (int) $w->duration_months,
-                    'is_full' => $activeMembers >= (int) $w->total_members,
+                    'is_full' => $activeMembers >= $w->memberCapacity(),
                 ];
             })->values();
 
@@ -108,8 +110,9 @@ class DashboardController extends Controller
                 'admin_name' => $m->wishi?->creator?->name,
                 'monthly_contribution' => (float) ($m->wishi?->monthly_contribution ?? 0),
                 'total_members' => (int) ($m->wishi?->total_members ?? 0),
+                'member_capacity' => $m->wishi ? $m->wishi->memberCapacity() : 0,
                 'duration_months' => (int) ($m->wishi?->duration_months ?? 0),
-                'total_pool' => (float) (($m->wishi?->monthly_contribution ?? 0) * ($m->wishi?->total_members ?? 0)),
+                'total_pool' => (float) ($m->wishi?->totalPool() ?? 0),
                 'cycle_type' => $m->wishi?->cycle_type,
                 'invited_at' => optional($m->created_at)?->toIso8601String(),
             ])->values();

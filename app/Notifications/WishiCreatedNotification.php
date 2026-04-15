@@ -20,12 +20,13 @@ class WishiCreatedNotification extends Notification
     public function toArray($notifiable): array
     {
         $monthly = number_format((float) $this->wishi->monthly_contribution, 2);
-        $pool = number_format((float) $this->wishi->monthly_contribution * (int) $this->wishi->total_members, 2);
+        $pool = number_format((float) $this->wishi->totalPool(), 2);
+        $seats = $this->wishi->memberCapacity();
 
         return [
             'kind' => 'wishi_created',
             'title' => 'New WISHI available to join',
-            'message' => "A new WISHI '{$this->wishi->name}' has been created — ₹{$monthly}/month, {$this->wishi->total_members} seats, pool ₹{$pool}. Open the WISHI page to request to join.",
+            'message' => "A new WISHI '{$this->wishi->name}' has been created — ₹{$monthly}/month, {$seats} open seats, pool ₹{$pool}. Open the WISHI page to request to join.",
             'wishi_id' => $this->wishi->id,
             'wishi_uuid' => $this->wishi->uuid,
             'wishi_name' => $this->wishi->name,

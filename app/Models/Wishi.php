@@ -24,17 +24,13 @@ class Wishi extends Model
         'cycle_interval_days',
         'cycle_day',
         'start_date',
+        'wishi_opening_time',
         'status',
         'auto_join',
         'require_approval',
         'winner_selection_mode',
         'cycle_type',
         'hybrid_pattern',
-        'bidding_window_days',
-        'min_credit_score',
-        'max_active_wishis_per_member',
-        'tender_start_time',
-        'tender_end_time',
         'current_cycle',
     ];
 
@@ -49,10 +45,7 @@ class Wishi extends Model
             'total_members' => 'integer',
             'duration_months' => 'integer',
             'cycle_interval_days' => 'integer',
-            'bidding_window_days' => 'integer',
             'current_cycle' => 'integer',
-            'min_credit_score' => 'integer',
-            'max_active_wishis_per_member' => 'integer',
         ];
     }
 
@@ -70,9 +63,25 @@ class Wishi extends Model
         return 'uuid';
     }
 
+    /**
+     * Invitable / joinable seat count. `total_members` is the WISHI size
+     * INCLUDING the admin (who holds seat #1 as organizer). Members that
+     * can actually be invited/approved = total_members - 1.
+     */
+    public function memberCapacity(): int
+    {
+        return max(0, (int) $this->total_members - 1);
+    }
+
+    /**
+     * Per-cycle pool. Admin contributes equally with every member (admin
+     * holds seat #1; receives the cycle-#1 organizer payout but pays the
+     * monthly contribution like everyone else for every cycle, including
+     * cycle #1). So pool = total_members × monthly_contribution.
+     */
     public function totalPool(): float
     {
-        return (float) $this->monthly_contribution * $this->total_members;
+        return (float) $this->monthly_contribution * (int) $this->total_members;
     }
 
     public function creator(): BelongsTo
