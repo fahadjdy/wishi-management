@@ -1,29 +1,21 @@
 <script setup>
 import { onMounted, ref, reactive, computed, watch } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useAdminStore } from '@/stores/admin';
-import { useAuthStore } from '@/stores/auth';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { useToast } from 'vue-toastification';
-import { formatDate, formatDateTime, formatINR, trustColor } from '@/utils/format';
+import { formatDateTime, trustColor } from '@/utils/format';
 
 const store = useAdminStore();
-const auth = useAuthStore();
-const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 
-useBreadcrumbs(() => [{ label: 'Admin', to: '/admin' }, { label: 'Members' }]);
+useBreadcrumbs(() => [{ label: 'Admin' }, { label: 'Members' }]);
 
 const filters = reactive({ q: '', status: '', sort: 'created_at', direction: 'desc' });
 const page = ref(1);
 
-const showLockModal = ref(false);
-const showCreditModal = ref(false);
 const showCreateModal = ref(false);
-const target = ref(null);
-const lockForm = reactive({ minutes: 60, reason: '' });
-const creditForm = reactive({ points: 0, reason: '' });
 const createForm = reactive({ name: '', email: '', phone: '', password: '', credit_score: 70, is_admin: false });
 const createErrors = ref({});
 const createLoading = ref(false);
@@ -55,12 +47,10 @@ async function submitCreate() {
     } finally { createLoading.value = false; }
 }
 
-// Fetch everything, split client-side (one API trip for 2 tables)
 async function load() {
     await store.fetchUsers({ ...filters, page: page.value, per_page: 50 });
 }
 
-const admins = computed(() => (store.users || []).filter((u) => u.is_admin));
 const members = computed(() => (store.users || []).filter((u) => !u.is_admin));
 
 onMounted(load);
@@ -68,41 +58,7 @@ watch(filters, () => { page.value = 1; load(); }, { deep: true });
 
 async function changePage(n) { page.value = n; await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
-async function toggleAdmin(u) {
-    if (!confirm(`${u.is_admin ? 'Revoke' : 'Grant'} platform admin for ${u.name}?`)) return;
-    try {
-        await store.toggleAdmin(u.id);
-        toast.success('Updated.');
-        await load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
-}
-
-function openLock(u) { target.value = u; lockForm.minutes = 60; lockForm.reason = ''; showLockModal.value = true; }
-async function lock() {
-    try {
-        await store.lock(target.value.id, lockForm.minutes, lockForm.reason || null);
-        toast.success('User locked.');
-        showLockModal.value = false;
-        await load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
-}
-
-async function unlock(u) {
-    try {
-        await store.unlock(u.id);
-        toast.success('User unlocked.');
-        await load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
-}
-
-async function remove(u) {
-    if (!confirm(`Soft-delete ${u.name}? They can be restored later.`)) return;
-    try {
-        await store.remove(u.id);
-        toast.success('User deleted.');
-        await load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
-}
+function openDetail(u) { router.push(`/admin/users/${u.id}`); }
 
 async function restore(u) {
     try {
@@ -111,128 +67,13 @@ async function restore(u) {
         await load();
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
 }
-
-function openCredit(u) { target.value = u; creditForm.points = 0; creditForm.reason = ''; showCreditModal.value = true; }
-async function adjustCredit() {
-    try {
-        await store.adjustCredit(target.value.id, creditForm.points, creditForm.reason);
-        toast.success('Credit adjusted.');
-        showCreditModal.value = false;
-        await load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
-}
-
-// Member-profile modal: shows the selected user's active WISHIs + pending dues
-// + recent paid contributions so the admin can Mark-paid / Undo inline.
-const showProfileModal = ref(false);
-const profileUser = ref(null);
-const profileLoading = ref(false);
-const profileBusyId = ref(null);
-
-async function openProfile(u) {
-    profileUser.value = u;
-    showProfileModal.value = true;
-    profileLoading.value = true;
-    try {
-        await store.fetchUser(u.id);
-    } catch (e) {
-        toast.error(e.response?.data?.message || 'Could not load profile.');
-        showProfileModal.value = false;
-    } finally {
-        profileLoading.value = false;
-    }
-}
-
-// Deep-link support: arriving at /admin/users?user=<id> auto-opens that
-// member's profile modal. Used by the "View profile" link in the WISHI
-// Members tab so admins can jump straight from a member row to the full
-// admin profile (active WISHIs, dues, history) in one click.
-async function openProfileById(id) {
-    const numeric = Number(id);
-    if (! numeric) return;
-    let u = (store.users || []).find((x) => Number(x.id) === numeric);
-    if (! u) {
-        try {
-            const data = await store.fetchUser(numeric);
-            u = data?.data || { id: numeric, name: data?.data?.name || 'User' };
-        } catch (e) {
-            toast.error('Could not load that member profile.');
-            return;
-        }
-    }
-    await openProfile(u);
-    // Strip ?user from URL so a refresh doesn't re-open the modal.
-    router.replace({ query: { ...route.query, user: undefined } });
-}
-
-watch(() => route.query.user, (id) => { if (id) openProfileById(id); }, { immediate: false });
-onMounted(() => { if (route.query.user) openProfileById(route.query.user); });
-
-async function profileMarkPaid(c) {
-    profileBusyId.value = c.id;
-    try {
-        await store.markContributionPaid(c.wishi_uuid, c.cycle_id, profileUser.value.id);
-        toast.success(`Marked ${formatINR(c.amount)} paid for ${profileUser.value.name}.`);
-        await store.fetchUser(profileUser.value.id);
-        await load();
-    } catch (e) {
-        toast.error(e.response?.data?.message || 'Failed.');
-    } finally {
-        profileBusyId.value = null;
-    }
-}
-
-async function profileUndoPaid(c) {
-    if (!confirm(`Undo ${formatINR(c.amount)} payment for cycle #${c.cycle_number}? The credit-score change will also be reversed.`)) return;
-    profileBusyId.value = c.id;
-    try {
-        await store.revertContribution(c.wishi_uuid, c.cycle_id, c.id);
-        toast.success('Payment reverted.');
-        await store.fetchUser(profileUser.value.id);
-        await load();
-    } catch (e) {
-        toast.error(e.response?.data?.message || 'Could not undo.');
-    } finally {
-        profileBusyId.value = null;
-    }
-}
-
-function daysUntil(dateStr) {
-    if (!dateStr) return null;
-    const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return Math.round((d.getTime() - today.getTime()) / 86400000);
-}
 </script>
 
 <template>
     <div class="space-y-5">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-                <h1 class="text-2xl font-bold">Member Management</h1>
-                <p class="text-sm text-gray-500">Create accounts and assign credentials, manage admins and members separately.</p>
-            </div>
-            <button @click="openCreate" class="btn-primary">+ Create member account</button>
-        </div>
-
-        <!-- Summary cards -->
-        <div v-if="store.summary" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div class="surface-padded">
-                <div class="text-xs text-gray-500">Total users</div>
-                <div class="text-2xl font-bold">{{ store.summary.total_users }}</div>
-            </div>
-            <div class="surface-padded">
-                <div class="text-xs text-gray-500">Platform admins</div>
-                <div class="text-2xl font-bold text-indigo-600">{{ store.summary.admins }}</div>
-            </div>
-            <div class="surface-padded">
-                <div class="text-xs text-gray-500">Locked</div>
-                <div class="text-2xl font-bold text-amber-600">{{ store.summary.locked }}</div>
-            </div>
-            <div class="surface-padded">
-                <div class="text-xs text-gray-500">Deleted</div>
-                <div class="text-2xl font-bold text-red-600">{{ store.summary.deleted }}</div>
-            </div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h1 class="text-2xl font-bold">Member Management</h1>
+            <button @click="openCreate" class="btn-primary btn-sm">+ Add member</button>
         </div>
 
         <!-- Filters -->
@@ -254,79 +95,6 @@ function daysUntil(dateStr) {
             </div>
         </div>
 
-        <!-- Admins Table -->
-        <section>
-            <div class="flex items-center justify-between mb-2">
-                <h2 class="text-lg font-semibold flex items-center gap-2">
-                    <span class="w-2 h-2 bg-indigo-600 rounded-full"></span> Platform Admins
-                    <span class="badge-brand">{{ admins.length }}</span>
-                </h2>
-            </div>
-            <div class="surface overflow-x-auto">
-                <table class="w-full text-sm min-w-[800px]">
-                    <thead class="bg-indigo-50 border-b border-indigo-100 text-xs text-indigo-800 uppercase">
-                        <tr>
-                            <th class="text-left px-4 py-3">Admin</th>
-                            <th class="text-left px-4 py-3">Credit</th>
-                            <th class="text-left px-4 py-3">WISHIs</th>
-                            <th class="text-left px-4 py-3">Last login</th>
-                            <th class="text-left px-4 py-3">Status</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <tr v-for="u in admins" :key="u.id" class="hover:bg-gray-50" :class="u.deleted_at ? 'opacity-60' : ''">
-                            <td class="px-4 py-3">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                        {{ u.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <div class="font-medium truncate flex items-center gap-1.5">
-                                            {{ u.name }}
-                                            <span class="badge-brand">Admin</span>
-                                        </div>
-                                        <div class="text-xs text-gray-500 truncate">{{ u.email }}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="px-4 py-3">
-                                <span class="font-medium">{{ u.credit_score }}</span>
-                                <span :class="trustColor[u.trust_level]" class="capitalize ml-1.5">{{ u.trust_level }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-xs">
-                                <div>Created: <strong>{{ u.created_wishis_count }}</strong></div>
-                                <div>Active: <strong>{{ u.active_memberships_count }}</strong></div>
-                            </td>
-                            <td class="px-4 py-3 text-xs text-gray-500">
-                                <div v-if="u.last_login_at">{{ formatDateTime(u.last_login_at) }}</div>
-                                <div v-else class="text-gray-400">never</div>
-                            </td>
-                            <td class="px-4 py-3">
-                                <span v-if="u.deleted_at" class="badge-danger">Deleted</span>
-                                <span v-else-if="u.is_locked" class="badge-warning">Locked</span>
-                                <span v-else class="badge-success">Active</span>
-                            </td>
-                            <td class="px-4 py-3 text-right">
-                                <div class="flex gap-1.5 justify-end flex-wrap">
-                                    <span v-if="u.id === auth.user?.id" class="text-xs text-gray-400 italic">that's you</span>
-                                    <template v-else-if="u.deleted_at">
-                                        <button @click="restore(u)" class="btn-secondary btn-sm">Restore</button>
-                                    </template>
-                                    <template v-else>
-                                        <button v-if="u.is_locked" @click="unlock(u)" class="btn-success btn-sm">Unlock</button>
-                                        <button v-else @click="openLock(u)" class="btn-secondary btn-sm">Lock</button>
-                                        <button @click="toggleAdmin(u)" class="btn-secondary btn-sm">Revoke admin</button>
-                                    </template>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr v-if="!admins.length"><td colspan="6" class="py-8 text-center text-sm text-gray-400">No admins in view.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
         <!-- Members Table -->
         <section>
             <h2 class="text-lg font-semibold flex items-center gap-2 mb-2">
@@ -338,7 +106,7 @@ function daysUntil(dateStr) {
                 </span>
             </h2>
             <div class="surface overflow-x-auto">
-                <table class="w-full text-sm min-w-[900px]">
+                <table class="w-full text-sm min-w-[800px]">
                     <thead class="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
                         <tr>
                             <th class="text-left px-4 py-3">Member</th>
@@ -351,6 +119,8 @@ function daysUntil(dateStr) {
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         <tr v-for="u in members" :key="u.id"
+                            @click="openDetail(u)"
+                            class="cursor-pointer"
                             :class="[
                                 u.payment_status === 'late' ? 'bg-red-50 hover:bg-red-100' :
                                 u.payment_status === 'advance' ? 'bg-emerald-50 hover:bg-emerald-100' :
@@ -360,13 +130,14 @@ function daysUntil(dateStr) {
                             :title="u.payment_status === 'late' ? `${u.late_contributions_count} late payment(s) pending` : u.payment_status === 'advance' ? `${u.advance_contributions_count} payment(s) made in advance` : ''">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                        {{ u.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                                        <img v-if="u.avatar_url" :src="u.avatar_url" :alt="u.name" class="w-full h-full object-cover" />
+                                        <span v-else>{{ u.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}</span>
                                     </div>
                                     <div class="min-w-0">
                                         <div class="font-medium truncate">{{ u.name }}</div>
                                         <div class="text-xs text-gray-500 truncate">{{ u.email }}</div>
-                                        <div v-if="u.phone" class="text-xs text-gray-400">{{ u.phone }}</div>
+                                        <div v-if="u.phone" class="text-xs text-gray-400">{{ u.phone }}<span v-if="u.whatsapp_number && u.whatsapp_number !== u.phone"> · WA {{ u.whatsapp_number }}</span></div>
                                     </div>
                                 </div>
                             </td>
@@ -391,20 +162,9 @@ function daysUntil(dateStr) {
                                 <span v-else class="badge-success">Active</span>
                                 <div v-if="u.failed_login_attempts > 0" class="text-[11px] text-amber-600 mt-0.5">{{ u.failed_login_attempts }} failed</div>
                             </td>
-                            <td class="px-4 py-3 text-right">
-                                <div class="flex gap-1.5 justify-end flex-wrap">
-                                    <template v-if="u.deleted_at">
-                                        <button @click="restore(u)" class="btn-secondary btn-sm">Restore</button>
-                                    </template>
-                                    <template v-else>
-                                        <button @click="openProfile(u)" class="btn-primary btn-sm" title="View WISHIs + pending dues">View</button>
-                                        <button @click="openCredit(u)" class="btn-ghost btn-sm" title="Adjust credit">±</button>
-                                        <button v-if="u.is_locked" @click="unlock(u)" class="btn-success btn-sm">Unlock</button>
-                                        <button v-else @click="openLock(u)" class="btn-secondary btn-sm">Lock</button>
-                                        <button @click="toggleAdmin(u)" class="btn-secondary btn-sm">Make admin</button>
-                                        <button @click="remove(u)" class="btn-danger btn-sm">Delete</button>
-                                    </template>
-                                </div>
+                            <td class="px-4 py-3 text-right" @click.stop>
+                                <button v-if="u.deleted_at" @click="restore(u)" class="btn-secondary btn-sm">Restore</button>
+                                <span v-else class="text-xs text-gray-400">→</span>
                             </td>
                         </tr>
                         <tr v-if="!members.length"><td colspan="6" class="py-8 text-center text-sm text-gray-400">No members in view.</td></tr>
@@ -419,49 +179,6 @@ function daysUntil(dateStr) {
                 </div>
             </div>
         </section>
-
-        <!-- Lock modal -->
-        <div v-if="showLockModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showLockModal = false">
-            <div class="bg-white rounded-2xl p-6 w-full max-w-md">
-                <h3 class="font-semibold text-lg mb-1">Lock {{ target?.name }}</h3>
-                <p class="text-xs text-gray-500 mb-4">User can't log in for the chosen duration.</p>
-                <div class="space-y-3">
-                    <div>
-                        <label class="form-label">Lock duration (minutes)</label>
-                        <input v-model.number="lockForm.minutes" type="number" min="5" max="43200" class="form-input" />
-                    </div>
-                    <div>
-                        <label class="form-label">Reason (audit log)</label>
-                        <textarea v-model="lockForm.reason" rows="2" class="form-input"></textarea>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-2 mt-5">
-                    <button @click="showLockModal = false" class="btn-secondary">Cancel</button>
-                    <button @click="lock" class="btn-danger">Lock account</button>
-                </div>
-            </div>
-        </div>
-
-        <div v-if="showCreditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showCreditModal = false">
-            <div class="bg-white rounded-2xl p-6 w-full max-w-md">
-                <h3 class="font-semibold text-lg mb-1">Adjust credit for {{ target?.name }}</h3>
-                <p class="text-xs text-gray-500 mb-4">Current score: {{ target?.credit_score }} · clamped 0-100.</p>
-                <div class="space-y-3">
-                    <div>
-                        <label class="form-label">Points (+/-)</label>
-                        <input v-model.number="creditForm.points" type="number" min="-100" max="100" class="form-input" />
-                    </div>
-                    <div>
-                        <label class="form-label">Reason (required)</label>
-                        <textarea v-model="creditForm.reason" rows="2" required class="form-input"></textarea>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-2 mt-5">
-                    <button @click="showCreditModal = false" class="btn-secondary">Cancel</button>
-                    <button @click="adjustCredit" class="btn-primary">Apply</button>
-                </div>
-            </div>
-        </div>
 
         <!-- Create member account modal -->
         <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showCreateModal = false">
@@ -510,143 +227,6 @@ function daysUntil(dateStr) {
                     <button @click="submitCreate" :disabled="createLoading" class="btn-primary">
                         {{ createLoading ? 'Creating…' : 'Create account' }}
                     </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Member profile modal: WISHIs + pending dues + paid history with inline mark-paid / undo -->
-        <div v-if="showProfileModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showProfileModal = false">
-            <div class="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-                <div class="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-11 h-11 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
-                            {{ profileUser?.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}
-                        </div>
-                        <div class="min-w-0">
-                            <h3 class="font-semibold text-lg truncate">{{ profileUser?.name }}</h3>
-                            <div class="text-xs text-gray-500 truncate">{{ profileUser?.email }}<span v-if="profileUser?.phone"> · {{ profileUser.phone }}</span></div>
-                            <div class="text-xs text-gray-500 mt-0.5">Credit <strong>{{ profileUser?.credit_score }}</strong> · <span :class="trustColor[profileUser?.trust_level]" class="capitalize">{{ profileUser?.trust_level }}</span></div>
-                        </div>
-                    </div>
-                    <button @click="showProfileModal = false" class="text-gray-400 hover:text-gray-700 text-2xl leading-none shrink-0">×</button>
-                </div>
-
-                <div class="overflow-y-auto p-5 space-y-5">
-                    <div v-if="profileLoading" class="py-12 text-center text-sm text-gray-400">Loading…</div>
-                    <template v-else>
-                        <!-- Totals -->
-                        <div class="grid grid-cols-3 gap-3">
-                            <div class="surface-padded">
-                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Active WISHIs</div>
-                                <div class="text-2xl font-bold">{{ store.currentUserDetail?.totals?.active_wishis_count ?? 0 }}</div>
-                            </div>
-                            <div class="surface-padded">
-                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Pending dues</div>
-                                <div class="text-2xl font-bold text-amber-600">{{ formatINR(store.currentUserDetail?.totals?.pending_dues || 0) }}</div>
-                            </div>
-                            <div class="surface-padded">
-                                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Pending count</div>
-                                <div class="text-2xl font-bold">{{ store.currentUserDetail?.totals?.pending_count ?? 0 }}</div>
-                            </div>
-                        </div>
-
-                        <!-- Active WISHIs -->
-                        <section>
-                            <h4 class="font-semibold mb-2">Active WISHIs</h4>
-                            <div v-if="!store.currentUserDetail?.active_wishis?.length" class="text-sm text-gray-400 py-3">Not a member of any active WISHI.</div>
-                            <ul v-else class="divide-y divide-gray-100 surface">
-                                <li v-for="m in store.currentUserDetail.active_wishis" :key="m.wishi_uuid" class="p-3 flex items-center justify-between gap-3 flex-wrap">
-                                    <div class="min-w-0">
-                                        <RouterLink :to="`/wishis/${m.wishi_uuid}`" class="font-medium text-indigo-600 hover:underline truncate block">{{ m.wishi_name }}</RouterLink>
-                                        <div class="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
-                                            <span class="capitalize">{{ m.cycle_type }}</span>
-                                            <span>· Cycle {{ m.current_cycle }}/{{ m.duration_months }}</span>
-                                            <span>· {{ formatINR(m.monthly_contribution) }}/mo</span>
-                                            <span v-if="m.token_no">· Token #{{ m.token_no }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center gap-1.5 shrink-0">
-                                        <span :class="m.membership_status === 'pending' ? 'badge-warning' : 'badge-success'" class="capitalize">{{ m.membership_status }}</span>
-                                        <span v-if="m.has_won" class="badge-info">🏆 #{{ m.won_in_cycle }}</span>
-                                    </div>
-                                </li>
-                            </ul>
-                        </section>
-
-                        <!-- Pending contributions with inline Mark paid -->
-                        <section>
-                            <h4 class="font-semibold mb-2">Pending payments</h4>
-                            <div v-if="!store.currentUserDetail?.pending_contributions?.length" class="text-sm text-gray-400 py-3">Nothing pending — all caught up.</div>
-                            <table v-else class="w-full text-sm surface overflow-hidden">
-                                <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
-                                    <tr>
-                                        <th class="text-left px-3 py-2">WISHI</th>
-                                        <th class="text-left px-3 py-2">Cycle</th>
-                                        <th class="text-right px-3 py-2">Amount</th>
-                                        <th class="text-left px-3 py-2">Due</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="c in store.currentUserDetail.pending_contributions" :key="c.id">
-                                        <td class="px-3 py-2 truncate max-w-[160px]">{{ c.wishi_name }}</td>
-                                        <td class="px-3 py-2">#{{ c.cycle_number }}</td>
-                                        <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
-                                        <td class="px-3 py-2">
-                                            <div>{{ formatDate(c.due_date) }}</div>
-                                            <div class="text-[11px]" :class="daysUntil(c.due_date) < 0 ? 'text-red-600 font-semibold' : 'text-gray-500'">
-                                                <span v-if="daysUntil(c.due_date) < 0">{{ Math.abs(daysUntil(c.due_date)) }} days late</span>
-                                                <span v-else-if="daysUntil(c.due_date) === 0">due today</span>
-                                                <span v-else>in {{ daysUntil(c.due_date) }} days</span>
-                                            </div>
-                                        </td>
-                                        <td class="px-3 py-2 text-right">
-                                            <button @click="profileMarkPaid(c)" :disabled="profileBusyId === c.id" class="btn-success btn-sm">
-                                                {{ profileBusyId === c.id ? '…' : 'Mark paid' }}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </section>
-
-                        <!-- Recently paid (with Undo) -->
-                        <section v-if="store.currentUserDetail?.paid_contributions?.length">
-                            <h4 class="font-semibold mb-2">Recent payments</h4>
-                            <table class="w-full text-sm surface overflow-hidden">
-                                <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
-                                    <tr>
-                                        <th class="text-left px-3 py-2">WISHI</th>
-                                        <th class="text-left px-3 py-2">Cycle</th>
-                                        <th class="text-right px-3 py-2">Amount</th>
-                                        <th class="text-left px-3 py-2">Paid</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="c in store.currentUserDetail.paid_contributions" :key="c.id">
-                                        <td class="px-3 py-2 truncate max-w-[160px]">{{ c.wishi_name }}</td>
-                                        <td class="px-3 py-2">#{{ c.cycle_number }}</td>
-                                        <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
-                                        <td class="px-3 py-2">
-                                            <div>{{ formatDate(c.paid_at) }}</div>
-                                            <div v-if="c.status === 'late'" class="text-[11px] text-amber-600">paid late</div>
-                                        </td>
-                                        <td class="px-3 py-2 text-right">
-                                            <button v-if="c.can_undo" @click="profileUndoPaid(c)" :disabled="profileBusyId === c.id" class="btn-danger btn-sm">
-                                                {{ profileBusyId === c.id ? '…' : 'Undo' }}
-                                            </button>
-                                            <span v-else class="text-[11px] text-gray-400">locked</span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </section>
-                    </template>
-                </div>
-
-                <div class="p-4 border-t border-gray-100 flex justify-end">
-                    <button @click="showProfileModal = false" class="btn-secondary">Close</button>
                 </div>
             </div>
         </div>

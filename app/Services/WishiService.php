@@ -16,6 +16,7 @@ class WishiService
     public function __construct(
         protected AuditService $audit,
         protected CycleService $cycles,
+        protected MembershipService $members,
     ) {}
 
     public function create(User $creator, array $data): Wishi
@@ -149,6 +150,10 @@ class WishiService
             ]);
 
             $cycle = $this->cycles->createNextCycle($wishi);
+
+            // Any pending join-requests / unanswered invites that didn't land in
+            // the cap before activation are now orphaned — sweep + notify.
+            $this->members->autoRejectPendingOnFull($wishi);
 
             $this->audit->log($wishi, $actor, 'wishi_activated', 'WISHI started by admin after full enrolment', [
                 'start_date' => $wishi->start_date->toDateString(),

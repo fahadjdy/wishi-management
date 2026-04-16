@@ -96,6 +96,12 @@ Once accepted/approved, member gets a `MemberStatusNotification` in their inbox.
 - a user accepts an admin invitation (`event='accepted_invite'`),
 - the admin approves a pending member (`event='joined'`).
 
+### Auto-rejection when WISHI fills up
+
+Pending requests / unanswered invites don't reserve a seat — only `approved` / `active` rows count toward capacity. So if other members fill the WISHI first, the leftover pending rows are orphaned. `MembershipService::autoRejectPendingOnFull($wishi)` sweeps them: each row is marked `removed` + soft-deleted, the member receives a `MemberStatusNotification(status='rejected_full')` ("WISHI is now full") and an audit log records `pending_auto_rejected_wishi_full`. The sweep runs:
+- inside `notifyIfJustFilled()` — triggered by every `approve()` / `acceptInvite()` / auto-approved `requestJoin()` path whenever the capacity check just flipped to full;
+- inside `WishiService::activate()` — any rows still pending at start time are definitively orphaned once cycle #1 opens.
+
 ### Token numbers
 
 Every approved member is assigned a sequential `token_no` on the `wishi_members` row, unique per WISHI. Assignment happens once — when the member first transitions to `approved` (via `requestJoin` auto-approve, `acceptInvite`, or admin `approve`). Tokens are stable: removal does **not** renumber remaining members, so gaps are allowed.
@@ -106,7 +112,20 @@ Every approved member is assigned a sequential `token_no` on the `wishi_members`
 
 `POST /api/v1/admin/users` (platform admin only) — accepts `name`, `email`, `phone?`, `password`, `credit_score?`, `is_admin?`. Password is hashed via `User::$casts`. Email verified immediately.
 
-The admin UI (`/admin/users`) has a **"+ Create member account"** button that opens a modal with auto-generated passwords so the admin can paste the credentials to the member over WhatsApp/SMS/etc.
+The admin UI (`/admin/users`) has a **"+ Add member"** button that opens a modal with auto-generated passwords so the admin can paste the credentials to the member over WhatsApp/SMS/etc.
+
+### Admin Member Detail page
+
+Clicking any row in `/admin/users` opens `/admin/users/:id` — a full-page admin view where the platform admin can manage a single member end-to-end without leaving the page:
+
+- **Profile edit** — name, email (login identifier), phone, WhatsApp, avatar. Email change hits `POST /admin/users/{id}` and keeps the same user row; it must be shared with the member out-of-band.
+- **Password reset** — admin sets a new password via `PUT /admin/users/{id}/password` and shares it manually (no email reset link flow). Admin cannot reset their own password here; they are redirected to use `/me/password` on their own Profile page.
+- **Lock / unlock** — inline form with duration + reason; reason is recorded in the audit log.
+- **Role & status** — toggle platform admin, soft-delete, restore.
+- **Credit adjust** — inline points + reason form (requires a reason, 0 points blocked).
+- **WISHI activity** — active memberships, pending dues with inline "Mark paid", recent payments with "Undo" (gated by the `can_undo` flag — open cycle, no winner announced yet, or organizer payout).
+
+The Members list page itself is intentionally minimal: search, sort, and a click-through row. Deep actions live on the detail page.
 
 ### Members table row tinting
 
@@ -340,8 +359,16 @@ The member dashboard (`pages/Dashboard.vue`) follows a **"don't cry wolf"** rule
 | Section | Visibility rule | Wording |
 |---|---|---|
 | **Late-payment hero** (red surface) | Only when the member has ≥1 contribution with `due_date < today` and `paid_at IS NULL`. Lists every late row inline. | "X late payments" header; per-row "X days late" |
-| **Next month total** (neutral surface) | Always visible when there are any upcoming payments. Sum of every upcoming contribution amount across all joined WISHIs. | "Next month total" + count of WISHIs |
+| **Next month total** (neutral surface) | Always visible when there are any upcoming payments. Sum of every upcoming contribution amount across all joined WISHIs. Label uses **unique WISHI count** (deduped by uuid), not the payment row count. | "Next month total" + "Across N WISHI you're a member of" |
 | **Upcoming payments table** | Always visible; one row per upcoming contribution. Cell color follows `urgencyClass` — red only for `days < 0`, gray otherwise. | "Due in N days" / "Due today" / "Due tomorrow" / "N days late" |
+
+### Stat cards — admin-as-organizer semantics (rule effective 2026-04-16)
+
+The four stat cards (`Active WISHIs`, `Total Contributed`, `Total Won`, `Credit Score`) treat the admin as an **implicit member of every WISHI they organize**, matching FLOW.md §4 (admin holds seat #1). Concretely, `DashboardController::index` computes:
+
+- `active_wishis_count` = (WISHIs the user has an `approved`/`active` `wishi_members` row in, where wishi status = `active`) **∪** (WISHIs the user created where wishi status = `active`). Deduped by wishi id.
+- `created_wishis_count` = lifetime count of wishis the user created, across **all** statuses (`draft`, `planned`, `active`, `completed`). Previously this was filtered to `active` only, which contradicted the "N created by you" label under the stat card.
+- `upcoming_payments` — relies on the admin having a `Contribution` row for every open cycle of their own WISHI. `CycleService::bootstrapContributions` creates that row from 2026-04-15 onward; migration `2026_04_16_110000_backfill_admin_contributions` retroactively fills the row for cycles bootstrapped before that date.
 
 **Forbidden language:** the word *"overdue"* is reserved for admin-side WISHI-opening cards (where the admin needs to act on a late activation). On the payment-due path, late payments are always called **"late"**, never overdue, so the messaging stays consistent across dashboard, modals, and notifications.
 
@@ -402,7 +429,8 @@ All three are needed — UI hiding is courtesy; the API must never leak admin-on
 | POST | `/login` | Issue session cookie |
 | POST | `/logout` | Destroy session |
 | GET | `/me` | Current user |
-| PUT | `/me/password` | Change own password (only self-service edit) |
+| PUT | `/me/password` | Change own password |
+| POST | `/me/profile` | Self-service profile update — avatar for everyone; platform admins can additionally edit their own `email` / `phone` / `whatsapp_number`. Members still route contact edits through Admin → Members |
 | GET | `/dashboard` | Member-side stats + upcoming payments |
 | GET | `/me/credit-score` | Own score + 50 most recent logs |
 | GET | `/notifications` | Inbox |
@@ -430,10 +458,12 @@ All three are needed — UI hiding is courtesy; the API must never leak admin-on
 | DELETE | `/wishis/{uuid}/cycles/{c}/contributions/{id}/payment` | Undo a recorded payment (admin only — see §9 "Undoing a payment") |
 | GET/POST | `/wishis/{uuid}/cycles/{c}/tenders` | List bids / place bid (immutable) |
 | GET | `/wishis/{uuid}/audit-logs` | Wishi-scoped audit |
-| GET | `/admin/dashboard` | Platform analytics (platform admin only) |
+| GET | `/admin/dashboard` | Platform analytics feed (platform admin only) — consumed inline on the main `/dashboard` page when viewer `is_admin`; there is no separate `/admin` route. Payload also includes `pending_join_requests` (member-initiated joins awaiting approval, `invited_by_admin=false`) so the admin dashboard can show an inline Approve/Reject queue without drilling into each WISHI |
 | GET | `/admin/users` | All users, search + filter. Each row carries `payment_status` (`late` \| `advance` \| `normal`) + `late_contributions_count` + `advance_contributions_count` so the Members table can tint rows red/green without a second round-trip |
 | POST | `/admin/users` | **Create a new account (replaces self-registration)** |
-| GET | `/admin/users/{id}` | User detail — also returns `active_wishis`, `pending_contributions`, `paid_contributions` (with `can_undo` flag) and `totals` so the admin Members page can render the member-profile modal in one round-trip |
+| GET | `/admin/users/{id}` | User detail — also returns `active_wishis`, `pending_contributions`, `paid_contributions` (with `can_undo` flag) and `totals` so the admin Member Detail page can render WISHIs + dues + payment history in one round-trip |
+| POST | `/admin/users/{id}` | Update member profile (multipart) — `name`, `email`, `phone`, `whatsapp_number`, `avatar`, `remove_avatar`. Email is changeable (unique-ignore-self); must be shared with member since it's their login identifier |
+| PUT | `/admin/users/{id}/password` | Admin-set password reset. Sets a new password the admin shares out-of-band (no email link flow). Admin cannot reset their own password here — they must use `/me/password`. |
 | PUT | `/admin/users/{id}/toggle-admin` | Grant/revoke platform admin |
 | PUT | `/admin/users/{id}/lock` | Lock account |
 | PUT | `/admin/users/{id}/unlock` | Unlock |
@@ -460,7 +490,7 @@ resources/js/
     AuthLayout.vue            - login/register split-screen
   router/index.js             - routes + auth + admin-only guards
   pages/
-    Dashboard.vue             - member/admin home with next-payment card
+    Dashboard.vue             - single home page. Members: next-payment card, discover, credit. Admins: platform analytics (tiles + AMCharts + top contributors + recent activity). No separate admin analytics page.
     auth/Login.vue                 - only auth page; registration removed
     wishis/
       Index.vue               - list of WISHIs with rich cards
@@ -475,8 +505,8 @@ resources/js/
         SettingsTab.vue       - admin settings form
         AuditTab.vue          - audit timeline
     admin/
-      Dashboard.vue           - AMCharts analytics dashboard
       Users.vue               - split admins/members tables, lock/unlock/credit
+    (platform analytics now rendered inline on Dashboard.vue when viewer is admin)
     Profile.vue, Notifications.vue, NotFound.vue
 ```
 

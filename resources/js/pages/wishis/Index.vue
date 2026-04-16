@@ -69,6 +69,23 @@ async function requestJoin(uuid) {
     }
 }
 
+async function cancelJoin(w) {
+    const msg = w.my_membership_status === 'pending'
+        ? 'Cancel your join request? The admin will be notified the seat is free again.'
+        : 'Leave this WISHI? You can only do this while it hasn\'t started yet.';
+    if (! confirm(msg)) return;
+    joiningUuid.value = w.uuid;
+    try {
+        await store.cancelJoin(w.uuid);
+        toast.success(w.my_membership_status === 'pending' ? 'Join request cancelled.' : 'You have left the WISHI.');
+        refresh();
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not cancel.');
+    } finally {
+        joiningUuid.value = null;
+    }
+}
+
 async function startWishiFromCard(uuid) {
     if (! confirm('Start this WISHI now? After starting, no member can be cancelled and cycle #1 (organizer payout) will open.')) return;
     startingUuid.value = uuid;
@@ -257,6 +274,11 @@ const statusChips = computed(() => {
                 </div>
                 <button v-if="w.can_join" @click.stop="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-primary btn-sm w-full mt-3">
                     {{ joiningUuid === w.uuid ? 'Sending…' : (w.require_approval ? '📩 Request to join' : '✅ Join now') }}
+                </button>
+                <button v-else-if="w.is_member && ['pending','approved'].includes(w.my_membership_status) && ['draft','planned'].includes(w.status) && !w.is_admin"
+                    @click.stop="cancelJoin(w)" :disabled="joiningUuid === w.uuid"
+                    class="btn-danger btn-sm w-full mt-3">
+                    {{ joiningUuid === w.uuid ? 'Cancelling…' : (w.my_membership_status === 'pending' ? '✕ Cancel join request' : '✕ Leave WISHI') }}
                 </button>
                 <button v-if="w.is_admin && w.can_start" @click.stop="startWishiFromCard(w.uuid)" :disabled="startingUuid === w.uuid" class="btn-success btn-sm w-full mt-3">
                     {{ startingUuid === w.uuid ? 'Starting…' : '🚀 Start WISHI now' }}

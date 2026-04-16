@@ -120,6 +120,35 @@ async function startWishi() {
     }
 }
 
+// Member-side: cancel own join request / leave before activation. Only
+// shown while wishi is draft/planned and current user has a pending or
+// approved membership (but isn't the admin, who has their own flows).
+const cancelling = ref(false);
+const canCancelOwn = computed(() =>
+    wishi.value
+    && !wishi.value.is_admin
+    && wishi.value.is_member
+    && ['pending', 'approved'].includes(wishi.value.my_membership_status)
+    && ['draft', 'planned'].includes(wishi.value.status)
+);
+async function cancelOwnMembership() {
+    const pending = wishi.value?.my_membership_status === 'pending';
+    const msg = pending
+        ? 'Cancel your join request? The admin will be notified the seat is free again.'
+        : 'Leave this WISHI? You can only do this while it hasn\'t started yet.';
+    if (!confirm(msg)) return;
+    cancelling.value = true;
+    try {
+        await wishiStore.cancelJoin(route.params.uuid);
+        toast.success(pending ? 'Join request cancelled.' : 'You have left the WISHI.');
+        router.push('/wishis');
+    } catch (e) {
+        toast.error(e.response?.data?.message || 'Could not cancel.');
+    } finally {
+        cancelling.value = false;
+    }
+}
+
 onMounted(() => loadAll(route.params.uuid));
 
 watch(() => route.params.uuid, (newUuid, oldUuid) => {
@@ -169,6 +198,10 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                     </button>
                     <button v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" @click="startWishi" :disabled="starting" class="btn-success btn-sm self-center">
                         {{ starting ? 'Starting…' : '🚀 Start WISHI' }}
+                    </button>
+                    <button v-if="canCancelOwn" @click="cancelOwnMembership" :disabled="cancelling" class="btn-danger btn-sm self-center"
+                        :title="wishi.my_membership_status === 'pending' ? 'Cancel your pending join request' : 'Leave this WISHI (only allowed before it starts)'">
+                        {{ cancelling ? 'Cancelling…' : (wishi.my_membership_status === 'pending' ? '✕ Cancel request' : '✕ Leave WISHI') }}
                     </button>
                 </div>
             </div>

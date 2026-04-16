@@ -63,6 +63,49 @@ class MembershipService
     }
 
     /**
+     * Member voluntarily cancels their own join request / withdraws from the
+     * WISHI. Allowed only while the WISHI hasn't activated — once cycle #1
+     * opens, leaving requires admin removal (and only in draft/planned per
+     * WishiMemberPolicy::remove). Self-initiated join requests AND
+     * admin-invitations-the-user-accepted both use this path.
+     */
+    public function cancelOwnMembership(Wishi $wishi, User $user): void
+    {
+        if (! in_array($wishi->status, ['draft', 'planned'], true)) {
+            throw new \DomainException('You can only cancel your membership while the WISHI has not started yet.');
+        }
+
+        $member = WishiMember::where('wishi_id', $wishi->id)
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['pending', 'approved', 'active'])
+            ->first();
+        if (! $member) {
+            throw new \DomainException('You have no active membership or pending request on this WISHI.');
+        }
+
+        DB::transaction(function () use ($member, $wishi, $user) {
+            $wasPending = $member->status === 'pending';
+            $member->update(['status' => 'removed']);
+            $member->delete();
+            $this->audit->log($wishi, $user, $wasPending ? 'join_request_cancelled' : 'member_self_removed',
+                $wasPending
+                    ? "User #{$user->id} cancelled their join request"
+                    : "User #{$user->id} left the WISHI before activation",
+                ['user_id' => $user->id, 'was_status' => $wasPending ? 'pending' : 'approved']
+            );
+
+            // Inform the admin so they know a seat just freed up.
+            $wishi->creator?->notify(new MemberStatusNotification(
+                $wishi,
+                $wasPending ? 'request_cancelled' : 'left',
+                $wasPending
+                    ? "{$user->name} cancelled their join request."
+                    : "{$user->name} left the WISHI before it started."
+            ));
+        });
+    }
+
+    /**
      * Admin adds a user to a WISHI. Creates an "invited" WishiMember row the user
      * must accept (or decline) from their dashboard before the seat is counted.
      */
@@ -246,14 +289,20 @@ class MembershipService
     /**
      * If the WISHI just became full (still in draft/not started), ping the creator
      * so they know they can start it. Idempotent — only fires once per capacity hit.
+     * Also auto-rejects any leftover pending rows (both member-initiated and
+     * admin-invited) since the seat is no longer available to them.
      */
     protected function notifyIfJustFilled(Wishi $wishi): void
     {
-        if ($wishi->status !== 'draft') {
-            return;
-        }
         $active = $wishi->activeMembers()->count();
         if ($active < $wishi->memberCapacity()) {
+            return;
+        }
+
+        // Capacity is hit → any still-pending rows are now orphaned.
+        $this->autoRejectPendingOnFull($wishi);
+
+        if ($wishi->status !== 'draft') {
             return;
         }
 
@@ -270,5 +319,42 @@ class MembershipService
         }
 
         $wishi->creator?->notify(new WishiFullNotification($wishi));
+    }
+
+    /**
+     * Sweep pending join-requests + admin-invites on a WISHI that has reached
+     * capacity. Each orphaned row is marked `removed` + soft-deleted, the user
+     * gets a `rejected_full` notification, and an audit line records the sweep.
+     * Safe to call more than once — idempotent (no pending rows = no-op).
+     */
+    public function autoRejectPendingOnFull(Wishi $wishi): int
+    {
+        $pending = WishiMember::where('wishi_id', $wishi->id)
+            ->where('status', 'pending')
+            ->with('user')
+            ->get();
+
+        if ($pending->isEmpty()) {
+            return 0;
+        }
+
+        DB::transaction(function () use ($pending, $wishi) {
+            foreach ($pending as $member) {
+                $member->update(['status' => 'removed']);
+                $member->delete();
+
+                $this->audit->log($wishi, null, 'pending_auto_rejected_wishi_full',
+                    "Pending request from user #{$member->user_id} auto-rejected — WISHI reached capacity",
+                    [
+                        'member_user_id' => $member->user_id,
+                        'invited_by_admin' => (bool) $member->invited_by_admin,
+                    ]
+                );
+
+                $member->user?->notify(new MemberStatusNotification($wishi, 'rejected_full'));
+            }
+        });
+
+        return $pending->count();
     }
 }

@@ -10,6 +10,7 @@ use App\Models\Payout;
 use App\Models\Tender;
 use App\Models\User;
 use App\Models\Wishi;
+use App\Models\WishiMember;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -79,6 +80,38 @@ class DashboardController extends Controller
                     'user_id' => $c->user_id,
                     'name' => $c->user?->name,
                     'total' => (float) $c->total,
+                ]),
+
+            // Member-initiated join requests awaiting admin approval. Admin-initiated
+            // invitations (invited_by_admin=true) are member-side work and live on the
+            // member dashboard, so they're excluded here.
+            'pending_join_requests' => WishiMember::where('status', 'pending')
+                ->where('invited_by_admin', false)
+                ->whereHas('wishi', fn ($q) => $q->whereIn('status', ['planned', 'active']))
+                ->with(['user:id,name,email,avatar_path,credit_score,trust_level', 'wishi:id,uuid,name,status,monthly_contribution,total_members,duration_months,cycle_type'])
+                ->orderBy('created_at')
+                ->limit(25)
+                ->get()
+                ->map(fn ($m) => [
+                    'member_id' => $m->id,
+                    'user' => [
+                        'id' => $m->user?->id,
+                        'name' => $m->user?->name,
+                        'email' => $m->user?->email,
+                        'avatar_url' => $m->user?->avatar_url,
+                        'credit_score' => (int) ($m->user?->credit_score ?? 0),
+                        'trust_level' => $m->user?->trust_level,
+                    ],
+                    'wishi' => [
+                        'uuid' => $m->wishi?->uuid,
+                        'name' => $m->wishi?->name,
+                        'status' => $m->wishi?->status,
+                        'monthly_contribution' => (float) ($m->wishi?->monthly_contribution ?? 0),
+                        'duration_months' => (int) ($m->wishi?->duration_months ?? 0),
+                        'total_members' => (int) ($m->wishi?->total_members ?? 0),
+                        'cycle_type' => $m->wishi?->cycle_type,
+                    ],
+                    'requested_at' => optional($m->created_at)?->toIso8601String(),
                 ]),
 
             'recent_audit' => AuditLog::with('user:id,name', 'wishi:id,name')

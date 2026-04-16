@@ -53,6 +53,19 @@ export const useAdminStore = defineStore('admin', {
             const { data } = await api.post('/admin/users', payload);
             return data.data;
         },
+        async updateUser(id, formData) {
+            // POST /admin/users/{id} accepts multipart for avatar upload.
+            const { data } = await api.post(`/admin/users/${id}`, formData);
+            return data.data;
+        },
+        async resetUserPassword(id, password) {
+            const { data } = await api.put(`/admin/users/${id}/password`, { password });
+            return data;
+        },
+        async toggleAdmin(id) {
+            const { data } = await api.put(`/admin/users/${id}/toggle-admin`);
+            return data.data;
+        },
         async markContributionPaid(wishiUuid, cycleId, userId) {
             const { data } = await api.post(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions`, {
                 user_id: userId,
@@ -62,10 +75,6 @@ export const useAdminStore = defineStore('admin', {
         },
         async revertContribution(wishiUuid, cycleId, contributionId) {
             const { data } = await api.delete(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions/${contributionId}/payment`);
-            return data.data;
-        },
-        async toggleAdmin(id) {
-            const { data } = await api.put(`/admin/users/${id}/toggle-admin`);
             return data.data;
         },
         async lock(id, minutes, reason) {

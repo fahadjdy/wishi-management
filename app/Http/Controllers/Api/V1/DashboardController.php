@@ -17,10 +17,18 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        $activeWishiIds = WishiMember::where('user_id', $user->id)
+        // Wishis the user is effectively part of = WishiMember rows for real
+        // members PLUS every WISHI they created (admin holds seat #1 as
+        // organizer per FLOW.md §4, even though no wishi_members row exists).
+        // Dashboard counts/totals must treat both paths as "member of".
+        $memberWishiIds = WishiMember::where('user_id', $user->id)
             ->whereIn('status', ['approved', 'active'])
             ->whereHas('wishi', fn ($q) => $q->where('status', 'active'))
             ->pluck('wishi_id');
+        $organizerWishiIds = Wishi::where('created_by', $user->id)
+            ->where('status', 'active')
+            ->pluck('id');
+        $activeWishiIds = $memberWishiIds->merge($organizerWishiIds)->unique()->values();
 
         $totalContributed = Contribution::where('user_id', $user->id)
             ->whereIn('status', ['paid', 'late'])
@@ -43,7 +51,10 @@ class DashboardController extends Controller
             ->whereIn('status', ['contribution_open', 'bidding_open', 'selection_pending'])
             ->count();
 
-        $createdCount = Wishi::where('created_by', $user->id)->where('status', 'active')->count();
+        // Lifetime count of wishis this user organized — drafts, planned, active
+        // and completed all count toward "N created by you" on the dashboard.
+        // Active-only count is already exposed separately as active_wishis_count.
+        $createdCount = Wishi::where('created_by', $user->id)->count();
 
         // Open-to-join WISHIs the user hasn't joined or requested yet. Surfaced on
         // the dashboard so a newly-published WISHI is immediately discoverable.

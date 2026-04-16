@@ -22,7 +22,6 @@ const navItems = computed(() => {
         { name: 'Profile', to: '/profile', icon: 'user' },
     ];
     if (auth.user?.is_admin) {
-        items.push({ name: 'Admin · Analytics', to: '/admin', icon: 'chart' });
         items.push({ name: 'Admin · Members', to: '/admin/users', icon: 'shield' });
     }
     return items;
@@ -121,8 +120,9 @@ onMounted(() => {
                         </RouterLink>
                         <div class="relative">
                             <button class="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-gray-100" @click="profileOpen = !profileOpen">
-                                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold flex items-center justify-center">
-                                    {{ initials }}
+                                <div class="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                                    <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" :alt="auth.user.name" class="w-full h-full object-cover" />
+                                    <span v-else>{{ initials }}</span>
                                 </div>
                                 <div class="hidden sm:block text-left">
                                     <div class="text-sm font-semibold text-gray-900 leading-tight">{{ auth.user?.name }}</div>

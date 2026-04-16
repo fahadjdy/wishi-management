@@ -61,5 +61,9 @@ export const useWishiStore = defineStore('wishi', {
             const { data } = await api.post(`/wishis/${uuid}/join`);
             return data;
         },
+        async cancelJoin(uuid) {
+            const { data } = await api.delete(`/wishis/${uuid}/join`);
+            return data;
+        },
     },
 });

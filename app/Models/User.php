@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -19,6 +21,8 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'whatsapp_number',
+        'avatar_path',
         'password',
         'credit_score',
         'trust_level',
@@ -44,6 +48,23 @@ class User extends Authenticatable
             'locked_until' => 'datetime',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Accessor: full public URL for the user's avatar (via the 'public' disk
+     * that's served at /storage). Returns null when no avatar is set so the
+     * UI can render the initials fallback.
+     */
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::get(function () {
+            if (! $this->avatar_path) return null;
+            try {
+                return Storage::disk('public')->url($this->avatar_path);
+            } catch (\Throwable $e) {
+                return null;
+            }
+        });
     }
 
     public function isLocked(): bool

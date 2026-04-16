@@ -34,8 +34,8 @@ const routes = [
 
             { path: 'profile', name: 'profile', component: () => import('@/pages/Profile.vue') },
             { path: 'notifications', name: 'notifications', component: () => import('@/pages/Notifications.vue') },
-            { path: 'admin', name: 'admin.dashboard', component: () => import('@/pages/admin/Dashboard.vue'), meta: { requiresAdmin: true } },
             { path: 'admin/users', name: 'admin.users', component: () => import('@/pages/admin/Users.vue'), meta: { requiresAdmin: true } },
+            { path: 'admin/users/:id', name: 'admin.users.show', component: () => import('@/pages/admin/UserDetail.vue'), meta: { requiresAdmin: true } },
         ],
     },
     {

@@ -13,6 +13,8 @@ class UserResource extends JsonResource
             'name' => $this->name,
             'email' => $this->email,
             'phone' => $this->phone,
+            'whatsapp_number' => $this->whatsapp_number,
+            'avatar_url' => $this->avatar_url,
             'credit_score' => (int) $this->credit_score,
             'trust_level' => $this->trust_level,
             'max_active_wishis' => $this->max_active_wishis,

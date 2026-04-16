@@ -216,6 +216,17 @@ class WishiController extends Controller
         ], 201);
     }
 
+    /**
+     * Member cancels their own join request / withdraws their membership.
+     * Allowed only while the WISHI has not yet activated. See
+     * MembershipService::cancelOwnMembership() for guards.
+     */
+    public function cancelJoin(Request $request, Wishi $wishi): JsonResponse
+    {
+        $this->membership->cancelOwnMembership($wishi, $request->user());
+        return response()->json(['message' => 'Your membership request has been cancelled.']);
+    }
+
     public function invite(Request $request, Wishi $wishi): JsonResponse
     {
         $this->authorize('manageMembers', $wishi);

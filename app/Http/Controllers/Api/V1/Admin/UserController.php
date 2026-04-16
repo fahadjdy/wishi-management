@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
@@ -182,6 +183,91 @@ class UserController extends Controller
             ['target_user_id' => $user->id, 'is_admin' => $user->is_admin]);
 
         return response()->json(['data' => new AdminUserResource($user)], 201);
+    }
+
+    /**
+     * Admin edits a member's profile — name, email, phone, WhatsApp, and
+     * avatar photo. Avatar upload uses the 'public' disk (served under
+     * /storage). Password is not touched here — use the `password` action
+     * below. Email change keeps the same user row; member must be notified
+     * out-of-band because it's also their login identifier.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:100'],
+            'email' => ['sometimes', 'email:rfc', 'max:160', Rule::unique('users', 'email')->ignore($id)],
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^\+?[0-9\s\-]{7,20}$/'],
+            'whatsapp_number' => ['nullable', 'string', 'max:20', 'regex:/^\+?[0-9\s\-]{7,20}$/'],
+            'avatar' => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'remove_avatar' => ['sometimes', 'boolean'],
+        ]);
+
+        $user = User::withTrashed()->findOrFail($id);
+
+        if (array_key_exists('name', $data)) {
+            $user->name = $data['name'];
+        }
+        if (array_key_exists('email', $data)) {
+            $user->email = strtolower($data['email']);
+        }
+        if ($request->exists('phone')) {
+            $user->phone = $data['phone'] ?? null;
+        }
+        if ($request->exists('whatsapp_number')) {
+            $user->whatsapp_number = $data['whatsapp_number'] ?? null;
+        }
+
+        if ($request->boolean('remove_avatar') && $user->avatar_path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($user->avatar_path);
+            $user->avatar_path = null;
+        }
+
+        if ($request->hasFile('avatar')) {
+            if ($user->avatar_path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($user->avatar_path);
+            }
+            $path = $request->file('avatar')->store("avatars/{$user->id}", 'public');
+            $user->avatar_path = $path;
+        }
+
+        $user->save();
+
+        $this->audit->log(null, $request->user(), 'user_updated_by_admin',
+            "Admin updated profile for {$user->email}",
+            ['target_user_id' => $user->id, 'fields' => array_keys($data)]);
+
+        return response()->json(['data' => new AdminUserResource($user->fresh())]);
+    }
+
+    /**
+     * Admin resets a member's password to a new value. Used when a member
+     * forgets their password — since self-registration is disabled and there
+     * is no email-based reset flow, the admin sets a fresh credential and
+     * shares it out-of-band (WhatsApp/SMS). Admins cannot reset their own
+     * password here; they must use the self-service `/me/password` path.
+     */
+    public function resetPassword(Request $request, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'max:72'],
+        ]);
+
+        if ($id === $request->user()->id) {
+            throw ValidationException::withMessages([
+                'user' => 'Use your own Profile page to change your password.',
+            ]);
+        }
+
+        $user = User::withTrashed()->findOrFail($id);
+        $user->password = $data['password']; // hashed by User::$casts
+        $user->save();
+
+        $this->audit->log(null, $request->user(), 'user_password_reset_by_admin',
+            "Admin reset password for {$user->email}",
+            ['target_user_id' => $user->id]);
+
+        return response()->json(['message' => 'Password reset. Share the new credentials with the member manually.']);
     }
 
     public function toggleAdmin(Request $request, int $id): JsonResponse

@@ -22,6 +22,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
         Route::put('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:sensitive');
+        Route::post('/me/profile', [AuthController::class, 'updateProfile'])->middleware('throttle:sensitive');
 
         Route::get('/dashboard', [DashboardController::class, 'index']);
         Route::get('/me/credit-score', [CreditScoreController::class, 'me']);
@@ -37,6 +38,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/wishis/{wishi}/publish', [WishiController::class, 'publish'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/activate', [WishiController::class, 'activate'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/join', [WishiController::class, 'join'])->middleware('throttle:sensitive');
+        Route::delete('/wishis/{wishi}/join', [WishiController::class, 'cancelJoin'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/invite', [WishiController::class, 'invite'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/accept-invite', [WishiController::class, 'acceptInvite'])->middleware('throttle:sensitive');
         Route::post('/wishis/{wishi}/decline-invite', [WishiController::class, 'declineInvite'])->middleware('throttle:sensitive');
@@ -70,6 +72,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/users', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'index']);
             Route::post('/users', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'store'])->middleware('throttle:sensitive');
             Route::get('/users/{id}', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'show']);
+            Route::post('/users/{id}', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'update'])->middleware('throttle:sensitive');
+            Route::put('/users/{id}/password', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'resetPassword'])->middleware('throttle:sensitive');
             Route::put('/users/{id}/toggle-admin', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'toggleAdmin'])->middleware('throttle:sensitive');
             Route::put('/users/{id}/lock', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'lock'])->middleware('throttle:sensitive');
             Route::put('/users/{id}/unlock', [\App\Http\Controllers\Api\V1\Admin\UserController::class, 'unlock'])->middleware('throttle:sensitive');
