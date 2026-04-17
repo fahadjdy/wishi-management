@@ -1,31 +1,32 @@
 <script setup>
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, computed } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useNotificationStore } from '@/stores/notification';
 import { useToast } from 'vue-toastification';
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue';
+import {
+    HomeIcon, RectangleStackIcon, BellIcon, UserCircleIcon,
+    ShieldCheckIcon, PlusIcon, ArrowRightOnRectangleIcon, ChevronDownIcon,
+} from '@heroicons/vue/24/outline';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
+import Logo from '@/components/Logo.vue';
 
 const auth = useAuthStore();
 const notif = useNotificationStore();
 const router = useRouter();
 const toast = useToast();
 
-const sidebarOpen = ref(false);
-const profileOpen = ref(false);
+const isAdmin = computed(() => !!auth.user?.is_admin);
 
-const navItems = computed(() => {
-    const items = [
-        { name: 'Dashboard', to: '/dashboard', icon: 'grid' },
-        { name: 'WISHIs', to: '/wishis', icon: 'layers' },
-        { name: 'Notifications', to: '/notifications', icon: 'bell' },
-        { name: 'Profile', to: '/profile', icon: 'user' },
-    ];
-    if (auth.user?.is_admin) {
-        items.push({ name: 'Admin · Members', to: '/admin/users', icon: 'shield' });
-    }
-    return items;
-});
+// Primary nav — same 4 items live on both the desktop sidebar and the mobile
+// bottom bar so the mental model doesn't fracture across breakpoints.
+const mainNav = computed(() => ([
+    { name: 'Home',          to: '/dashboard',     icon: HomeIcon },
+    { name: 'WISHIs',        to: '/wishis',        icon: RectangleStackIcon },
+    { name: 'Notifications', to: '/notifications', icon: BellIcon, badge: notif.unreadCount },
+    { name: 'Profile',       to: '/profile',       icon: UserCircleIcon },
+]));
 
 const initials = computed(() => {
     if (!auth.user?.name) return '';
@@ -35,114 +36,165 @@ const initials = computed(() => {
 async function logout() {
     try {
         await auth.logout();
-        toast.success('Logged out.');
+        toast.success('Signed out.');
         router.push({ name: 'login' });
     } catch {
-        toast.error('Logout failed.');
+        toast.error('Could not sign out.');
     }
 }
 
-onMounted(() => {
-    notif.fetch().catch(() => {});
-});
+onMounted(() => { notif.fetch().catch(() => {}); });
 </script>
 
 <template>
-    <div class="min-h-screen flex bg-gray-50">
-        <!-- Sidebar -->
-        <aside
-            class="fixed lg:sticky top-0 left-0 z-40 h-screen w-64 bg-[#0f1538] text-gray-200 flex flex-col transition-transform duration-200"
-            :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-        >
-            <div class="px-5 py-5 flex items-center gap-2.5 border-b border-white/10">
-                <div class="w-9 h-9 rounded-lg bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z" /></svg>
-                </div>
-                <div>
-                    <div class="text-white font-bold text-lg leading-none">WISHI</div>
-                    <div class="text-[11px] uppercase tracking-wider text-indigo-300">Chit Fund Manager</div>
-                </div>
+    <div class="min-h-screen flex bg-slate-50">
+        <!-- ================================================================
+             DESKTOP SIDEBAR (≥ lg). Mobile users navigate via the bottom bar.
+        ================================================================= -->
+        <aside class="hidden lg:flex sticky top-0 h-screen w-64 shrink-0 flex-col bg-slate-900 text-slate-200 border-r border-slate-800">
+            <div class="px-5 py-5 border-b border-white/10">
+                <Logo variant="horizontal" size="md" mono />
             </div>
 
-            <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+            <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto" aria-label="Primary">
+                <div class="px-2 mb-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">Main</div>
                 <RouterLink
-                    v-for="item in navItems"
-                    :key="item.to"
-                    :to="item.to"
-                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition"
-                    active-class="bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                    :class="{ 'text-gray-300 hover:bg-white/5 hover:text-white': !($route.path.startsWith(item.to) && item.to !== '/dashboard') }"
-                    @click="sidebarOpen = false"
+                    v-for="item in mainNav" :key="item.to" :to="item.to"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    active-class="!bg-brand-600/20 !text-white"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <template v-if="item.icon === 'grid'"><rect x="3" y="3" width="7" height="7" rx="1.2" /><rect x="14" y="3" width="7" height="7" rx="1.2" /><rect x="3" y="14" width="7" height="7" rx="1.2" /><rect x="14" y="14" width="7" height="7" rx="1.2" /></template>
-                        <template v-else-if="item.icon === 'layers'"><path d="m12 2 9 5-9 5-9-5 9-5z" /><path d="m3 12 9 5 9-5" /><path d="m3 17 9 5 9-5" /></template>
-                        <template v-else-if="item.icon === 'bell'"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></template>
-                        <template v-else-if="item.icon === 'user'"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></template>
-                        <template v-else-if="item.icon === 'shield'"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></template>
-                        <template v-else-if="item.icon === 'chart'"><polyline points="3 3 3 21 21 21" /><path d="M7 15l4-6 4 3 5-7" /></template>
-                    </svg>
-                    <span class="flex-1">{{ item.name }}</span>
-                    <span v-if="item.name === 'Notifications' && notif.unreadCount > 0" class="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                        {{ notif.unreadCount }}
-                    </span>
+                    <component :is="item.icon" class="w-5 h-5 shrink-0" aria-hidden="true" />
+                    <span class="flex-1 truncate">{{ item.name }}</span>
+                    <span v-if="item.badge > 0" class="bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-5 text-center">{{ item.badge }}</span>
                 </RouterLink>
+
+                <template v-if="isAdmin">
+                    <div class="px-2 mt-6 mb-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">Admin</div>
+                    <RouterLink
+                        to="/admin/users"
+                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                        active-class="!bg-brand-600/20 !text-white"
+                    >
+                        <ShieldCheckIcon class="w-5 h-5 shrink-0" aria-hidden="true" />
+                        <span class="flex-1 truncate">Members</span>
+                    </RouterLink>
+                </template>
             </nav>
 
-            <div v-if="auth.user?.is_admin" class="px-4 py-4 border-t border-white/10">
-                <RouterLink to="/wishis/create" class="block w-full text-center bg-indigo-500 hover:bg-indigo-400 text-white font-semibold py-2.5 rounded-lg text-sm transition">
-                    + New WISHI
+            <div v-if="isAdmin" class="px-4 py-4 border-t border-white/10">
+                <RouterLink to="/wishis/create" class="btn-primary btn-block">
+                    <PlusIcon class="w-4 h-4" aria-hidden="true" />
+                    New WISHI
                 </RouterLink>
             </div>
-            <div v-else class="px-4 py-3 border-t border-white/10 text-center text-[11px] text-gray-400">
+            <div v-else class="px-4 py-4 border-t border-white/10 text-center text-[11px] text-slate-400">
                 Only platform admins can create WISHIs
             </div>
         </aside>
 
-        <!-- Mobile overlay -->
-        <div v-if="sidebarOpen" class="fixed inset-0 bg-black/40 z-30 lg:hidden" @click="sidebarOpen = false"></div>
-
-        <!-- Main -->
+        <!-- ================================================================
+             MAIN COLUMN
+        ================================================================= -->
         <div class="flex-1 flex flex-col min-w-0">
-            <!-- Topbar -->
-            <header class="sticky top-0 z-20 bg-white border-b border-gray-200">
+            <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
                 <div class="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
-                        <button class="lg:hidden p-2 -ml-2 rounded-lg hover:bg-gray-100 shrink-0" @click="sidebarOpen = !sidebarOpen">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" /></svg>
-                        </button>
-                        <Breadcrumbs class="min-w-0 flex-1" />
+                        <!-- Mobile brand mark — bottom nav handles routing so no hamburger needed -->
+                        <div class="lg:hidden shrink-0">
+                            <Logo variant="horizontal" size="sm" />
+                        </div>
+                        <Breadcrumbs class="min-w-0 flex-1 hidden sm:flex" />
                     </div>
+
                     <div class="flex items-center gap-2">
-                        <RouterLink to="/notifications" class="relative p-2 rounded-lg hover:bg-gray-100" title="Notifications">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
-                            <span v-if="notif.unreadCount > 0" class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+                        <RouterLink to="/notifications" class="relative p-2 rounded-lg hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="Notifications">
+                            <BellIcon class="w-5 h-5 text-slate-700" aria-hidden="true" />
+                            <span v-if="notif.unreadCount > 0" class="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" aria-hidden="true"></span>
                         </RouterLink>
-                        <div class="relative">
-                            <button class="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-gray-100" @click="profileOpen = !profileOpen">
-                                <div class="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
+
+                        <Menu as="div" class="relative">
+                            <MenuButton class="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+                                <div class="w-9 h-9 rounded-full overflow-hidden bg-linear-to-br from-brand-500 to-brand-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
                                     <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" :alt="auth.user.name" class="w-full h-full object-cover" />
                                     <span v-else>{{ initials }}</span>
                                 </div>
                                 <div class="hidden sm:block text-left">
-                                    <div class="text-sm font-semibold text-gray-900 leading-tight">{{ auth.user?.name }}</div>
-                                    <div class="text-xs text-gray-500 leading-tight">{{ auth.user?.email }}</div>
+                                    <div class="text-sm font-semibold text-slate-900 leading-tight truncate max-w-35">{{ auth.user?.name }}</div>
+                                    <div class="text-xs text-slate-500 leading-tight truncate max-w-35">{{ auth.user?.email }}</div>
                                 </div>
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500 hidden sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-                            </button>
-                            <div v-if="profileOpen" class="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50" @click="profileOpen = false">
-                                <RouterLink to="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile & Credit Score</RouterLink>
-                                <button @click="logout" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
-                            </div>
-                        </div>
+                                <ChevronDownIcon class="w-4 h-4 text-slate-500 hidden sm:block" aria-hidden="true" />
+                            </MenuButton>
+                            <transition
+                                enter-active-class="transition ease-out duration-150"
+                                enter-from-class="opacity-0 -translate-y-1 scale-95"
+                                enter-to-class="opacity-100 translate-y-0 scale-100"
+                                leave-active-class="transition ease-in duration-100"
+                                leave-from-class="opacity-100"
+                                leave-to-class="opacity-0"
+                            >
+                                <MenuItems class="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 focus:outline-none origin-top-right">
+                                    <div class="px-4 py-3 border-b border-slate-100 sm:hidden">
+                                        <div class="font-semibold text-sm truncate">{{ auth.user?.name }}</div>
+                                        <div class="text-xs text-slate-500 truncate">{{ auth.user?.email }}</div>
+                                    </div>
+                                    <MenuItem v-slot="{ active }">
+                                        <RouterLink to="/profile" :class="[active && 'bg-slate-50']" class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700">
+                                            <UserCircleIcon class="w-4 h-4" aria-hidden="true" />
+                                            Profile &amp; credit
+                                        </RouterLink>
+                                    </MenuItem>
+                                    <MenuItem v-if="isAdmin" v-slot="{ active }">
+                                        <RouterLink to="/admin/users" :class="[active && 'bg-slate-50']" class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700">
+                                            <ShieldCheckIcon class="w-4 h-4" aria-hidden="true" />
+                                            Manage members
+                                        </RouterLink>
+                                    </MenuItem>
+                                    <div class="my-1 border-t border-slate-100"></div>
+                                    <MenuItem v-slot="{ active }">
+                                        <button type="button" @click="logout" :class="[active && 'bg-rose-50']" class="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-rose-600">
+                                            <ArrowRightOnRectangleIcon class="w-4 h-4" aria-hidden="true" />
+                                            Sign out
+                                        </button>
+                                    </MenuItem>
+                                </MenuItems>
+                            </transition>
+                        </Menu>
                     </div>
                 </div>
+                <Breadcrumbs class="sm:hidden px-4 pb-2" />
             </header>
 
-            <!-- Page content -->
-            <main class="flex-1 px-4 sm:px-6 lg:px-8 py-6">
+            <!-- Page content — bottom padding on mobile reserves space for bottom nav -->
+            <main class="flex-1 px-4 sm:px-6 lg:px-8 py-6 pb-28 lg:pb-10">
                 <RouterView />
             </main>
         </div>
+
+        <!-- ================================================================
+             MOBILE BOTTOM NAV (< lg)
+        ================================================================= -->
+        <nav class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 safe-bottom shadow-[0_-2px_8px_rgba(15,23,42,0.04)]" aria-label="Mobile navigation">
+            <div class="relative">
+                <div class="grid grid-cols-4">
+                    <RouterLink
+                        v-for="item in mainNav" :key="item.to" :to="item.to"
+                        class="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium text-slate-500 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:rounded-md min-h-14"
+                        active-class="!text-brand-700"
+                    >
+                        <div class="relative">
+                            <component :is="item.icon" class="w-6 h-6" aria-hidden="true" />
+                            <span v-if="item.badge > 0" class="absolute -top-1 -right-2 bg-rose-500 text-white text-[9px] font-bold rounded-full px-1 min-w-4 h-4 flex items-center justify-center">{{ item.badge }}</span>
+                        </div>
+                        {{ item.name }}
+                    </RouterLink>
+                </div>
+                <RouterLink v-if="isAdmin" to="/wishis/create"
+                    class="absolute -top-7 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/40 flex items-center justify-center hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-500 ring-4 ring-slate-50"
+                    aria-label="Create WISHI"
+                >
+                    <PlusIcon class="w-7 h-7" aria-hidden="true" />
+                </RouterLink>
+            </div>
+        </nav>
     </div>
 </template>

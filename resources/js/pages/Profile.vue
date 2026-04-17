@@ -6,10 +6,12 @@ import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { useToast } from 'vue-toastification';
 import api from '@/api/client';
 import { formatDateTime, trustColor } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
 
 const auth = useAuthStore();
 const credit = useCreditStore();
 const toast = useToast();
+const { confirm: uiConfirm } = useConfirm();
 
 useBreadcrumbs(() => [{ label: 'Profile' }]);
 onMounted(() => credit.fetchMe());
@@ -42,7 +44,13 @@ async function onAvatarChange(e) {
 }
 
 async function removeAvatar() {
-    if (! confirm('Remove your profile photo?')) return;
+    const ok = await uiConfirm({
+        title: 'Remove profile photo?',
+        message: 'Your photo will be deleted — you can upload a new one any time.',
+        confirmText: 'Remove photo',
+        tone: 'danger',
+    });
+    if (! ok) return;
     avatarSaving.value = true;
     try {
         const fd = new FormData();
@@ -131,11 +139,11 @@ async function saveContact() {
         <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="relative">
                 <!-- Decorative gradient band -->
-                <div class="h-20 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                <div class="h-20 bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
                 <div class="px-6 pb-5 -mt-10 flex flex-wrap items-end gap-5">
                     <!-- Avatar with overlay edit button -->
                     <div class="relative shrink-0 group">
-                        <div class="w-24 h-24 rounded-full ring-4 ring-white shadow-md overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white text-2xl font-bold">
+                        <div class="w-24 h-24 rounded-full ring-4 ring-white shadow-md overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white text-2xl font-bold">
                             <img v-if="avatarSrc" :src="avatarSrc" :alt="auth.user?.name" class="w-full h-full object-cover" />
                             <span v-else>{{ initials }}</span>
                         </div>

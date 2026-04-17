@@ -4,12 +4,26 @@ import api from '@/api/client';
 export const useContributionStore = defineStore('contribution', {
     state: () => ({
         contributions: [],
+        // Member's full payment timeline for a single WISHI — one row per cycle
+        // the member has a contribution in, ordered oldest → newest.
+        myHistory: [],
+        myHistoryMeta: null,
     }),
     actions: {
         async fetch(wishiUuid, cycleId) {
             const { data } = await api.get(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions`);
             this.contributions = data.data;
             return data.data;
+        },
+        async fetchMyHistory(wishiUuid) {
+            const { data } = await api.get(`/wishis/${wishiUuid}/my-contributions`);
+            this.myHistory = data.data;
+            this.myHistoryMeta = data.meta;
+            return data.data;
+        },
+        clearMyHistory() {
+            this.myHistory = [];
+            this.myHistoryMeta = null;
         },
         async record(wishiUuid, cycleId, payload) {
             const { data } = await api.post(`/wishis/${wishiUuid}/cycles/${cycleId}/contributions`, payload);

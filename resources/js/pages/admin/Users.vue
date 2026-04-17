@@ -5,10 +5,13 @@ import { useAdminStore } from '@/stores/admin';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { useToast } from 'vue-toastification';
 import { formatDateTime, trustColor } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
+import { PlusIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 
 const store = useAdminStore();
 const router = useRouter();
 const toast = useToast();
+const { showCredentials } = useConfirm();
 
 useBreadcrumbs(() => [{ label: 'Admin' }, { label: 'Members' }]);
 
@@ -37,10 +40,18 @@ async function submitCreate() {
     createLoading.value = true;
     createErrors.value = {};
     try {
+        const email = createForm.email;
+        const password = createForm.password;
+        const name = createForm.name;
         await store.createUser(createForm);
-        toast.success(`Account created · share these credentials with the member: ${createForm.email} / ${createForm.password}`);
         showCreateModal.value = false;
         await load();
+        await showCredentials({
+            title: 'Account created',
+            description: `Share these login details with ${name} securely (WhatsApp, SMS or in person). The password is shown only once — you can reset it later from the member profile.`,
+            email,
+            password,
+        });
     } catch (e) {
         if (e.response?.status === 422) createErrors.value = e.response.data.errors || {};
         else toast.error(e.response?.data?.message || 'Failed.');
@@ -73,7 +84,10 @@ async function restore(u) {
     <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h1 class="text-2xl font-bold">Member Management</h1>
-            <button @click="openCreate" class="btn-primary btn-sm">+ Add member</button>
+            <button @click="openCreate" class="btn-primary btn-sm">
+                <PlusIcon class="w-4 h-4" aria-hidden="true" />
+                Add member
+            </button>
         </div>
 
         <!-- Filters -->
@@ -105,7 +119,57 @@ async function restore(u) {
                     <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200"></span>Paid in advance</span>
                 </span>
             </h2>
-            <div class="surface overflow-x-auto">
+
+            <!-- Mobile cards (< md) — same data, finger-friendly stacked layout -->
+            <div class="md:hidden space-y-2">
+                <div v-for="u in members" :key="u.id"
+                    @click="openDetail(u)"
+                    class="surface-padded cursor-pointer transition hover:shadow-md hover:border-brand-300"
+                    :class="[
+                        u.payment_status === 'late' ? 'bg-rose-50! border-rose-200!' :
+                        u.payment_status === 'advance' ? 'bg-emerald-50! border-emerald-200!' : '',
+                        u.deleted_at && 'opacity-60'
+                    ]"
+                >
+                    <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-full overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            <img v-if="u.avatar_url" :src="u.avatar_url" :alt="u.name" class="w-full h-full object-cover" />
+                            <span v-else>{{ u.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-semibold truncate text-slate-900">{{ u.name }}</span>
+                                <span v-if="u.deleted_at" class="badge-danger">Deleted</span>
+                                <span v-else-if="u.is_locked" class="badge-warning">Locked</span>
+                                <span v-else class="badge-success">Active</span>
+                            </div>
+                            <div class="text-xs text-slate-500 truncate">{{ u.email }}</div>
+                            <div v-if="u.phone" class="text-[11px] text-slate-400 truncate">{{ u.phone }}</div>
+                            <div class="flex items-center gap-2 flex-wrap mt-2 text-xs">
+                                <span class="badge-gray">Credit {{ u.credit_score }}</span>
+                                <span :class="trustColor[u.trust_level]" class="capitalize">{{ u.trust_level }}</span>
+                                <span v-if="u.missed_payments_count > 0" class="text-rose-600 font-semibold">{{ u.missed_payments_count }} missed</span>
+                            </div>
+                            <div class="flex items-center gap-2 flex-wrap mt-2 text-[11px] text-slate-500">
+                                <span><strong>{{ u.active_memberships_count }}</strong> active</span>
+                                <span v-if="u.won_count > 0" class="text-emerald-600 font-semibold">· Won {{ u.won_count }}</span>
+                                <span v-if="u.last_login_at" class="text-slate-400">· last login {{ formatDateTime(u.last_login_at) }}</span>
+                                <span v-else class="text-slate-400">· never logged in</span>
+                            </div>
+                            <div v-if="u.deleted_at" class="mt-3" @click.stop>
+                                <button @click="restore(u)" class="btn-secondary btn-sm">
+                                    <ArrowPathIcon class="w-4 h-4" aria-hidden="true" />
+                                    Restore account
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="!members.length" class="surface-padded text-center text-sm text-slate-400 py-8">No members in view.</div>
+            </div>
+
+            <!-- Desktop table (≥ md) -->
+            <div class="surface overflow-x-auto hidden md:block">
                 <table class="w-full text-sm min-w-[800px]">
                     <thead class="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
                         <tr>
@@ -130,7 +194,7 @@ async function restore(u) {
                             :title="u.payment_status === 'late' ? `${u.late_contributions_count} late payment(s) pending` : u.payment_status === 'advance' ? `${u.advance_contributions_count} payment(s) made in advance` : ''">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
                                         <img v-if="u.avatar_url" :src="u.avatar_url" :alt="u.name" class="w-full h-full object-cover" />
                                         <span v-else>{{ u.name.split(' ').map(p=>p[0]).slice(0,2).join('') }}</span>
                                     </div>

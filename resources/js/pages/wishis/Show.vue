@@ -14,6 +14,11 @@ import CyclesTab from './tabs/CyclesTab.vue';
 import MembersTab from './tabs/MembersTab.vue';
 import SettingsTab from './tabs/SettingsTab.vue';
 import AuditTab from './tabs/AuditTab.vue';
+import { useConfirm } from '@/composables/useConfirm';
+import {
+    PaperAirplaneIcon, PlayIcon, XMarkIcon,
+    DocumentTextIcon, ClockIcon, CheckCircleIcon, PauseCircleIcon,
+} from '@heroicons/vue/24/outline';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +27,7 @@ const cycleStore = useCycleStore();
 const memberStore = useMemberStore();
 const contribStore = useContributionStore();
 const toast = useToast();
+const { confirm: uiConfirm } = useConfirm();
 const starting = ref(false);
 
 const wishi = computed(() => wishiStore.currentWishi);
@@ -70,7 +76,18 @@ const statusBadge = {
 
 const publishing = ref(false);
 async function publishWishi() {
-    if (!confirm('Publish this WISHI? It will become visible to all platform members in the Discover list, and they can request to join.')) return;
+    const ok = await uiConfirm({
+        title: 'Publish this WISHI?',
+        message: 'It will become visible to every platform member in the Discover list, and they can request to join.',
+        meta: wishi.value ? {
+            'WISHI': wishi.value.name,
+            'Contribution': `${formatINR(wishi.value.monthly_contribution)} / cycle`,
+            'Seats open': `${wishi.value.member_capacity ?? (wishi.value.total_members - 1)}`,
+        } : undefined,
+        confirmText: 'Publish WISHI',
+        tone: 'primary',
+    });
+    if (!ok) return;
     publishing.value = true;
     try {
         await wishiStore.publish(route.params.uuid);
@@ -107,7 +124,21 @@ function switchTab(tab) {
 }
 
 async function startWishi() {
-    if (!confirm('Start this WISHI now? Every member will be notified, start date will be today, and cycle #1 will open immediately.')) return;
+    const ok = await uiConfirm({
+        title: 'Start this WISHI now?',
+        message: `After starting, no member can leave. Cycle #1 (organizer payout) opens immediately and every member will be notified.`,
+        meta: wishi.value ? {
+            'WISHI': wishi.value.name,
+            'Members': `${wishi.value.total_members} (incl. admin)`,
+            'Pool / cycle': formatINR(wishi.value.total_pool),
+            'Duration': `${wishi.value.duration_months} cycles`,
+        } : undefined,
+        requireTypeText: wishi.value?.name,
+        confirmText: 'Yes, start WISHI',
+        cancelText: 'Not yet',
+        tone: 'primary',
+    });
+    if (!ok) return;
     starting.value = true;
     try {
         await wishiStore.activate(route.params.uuid);
@@ -133,10 +164,15 @@ const canCancelOwn = computed(() =>
 );
 async function cancelOwnMembership() {
     const pending = wishi.value?.my_membership_status === 'pending';
-    const msg = pending
-        ? 'Cancel your join request? The admin will be notified the seat is free again.'
-        : 'Leave this WISHI? You can only do this while it hasn\'t started yet.';
-    if (!confirm(msg)) return;
+    const ok = await uiConfirm({
+        title: pending ? 'Cancel join request?' : 'Leave this WISHI?',
+        message: pending
+            ? `Your join request for ${wishi.value?.name} will be withdrawn and the admin notified the seat is free again.`
+            : `You can only leave ${wishi.value?.name} while it hasn't started yet. After it starts, your seat is locked.`,
+        confirmText: pending ? 'Cancel request' : 'Leave WISHI',
+        tone: 'danger',
+    });
+    if (!ok) return;
     cancelling.value = true;
     try {
         await wishiStore.cancelJoin(route.params.uuid);
@@ -194,24 +230,28 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                         </div>
                     </div>
                     <button v-if="wishi.status === 'draft' && isAdmin" @click="publishWishi" :disabled="publishing" class="btn-primary btn-sm self-center">
-                        {{ publishing ? 'Publishing…' : '📢 Publish' }}
+                        <PaperAirplaneIcon v-if="!publishing" class="w-4 h-4" aria-hidden="true" />
+                        {{ publishing ? 'Publishing…' : 'Publish' }}
                     </button>
                     <button v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" @click="startWishi" :disabled="starting" class="btn-success btn-sm self-center">
-                        {{ starting ? 'Starting…' : '🚀 Start WISHI' }}
+                        <PlayIcon v-if="!starting" class="w-4 h-4" aria-hidden="true" />
+                        {{ starting ? 'Starting…' : 'Start WISHI' }}
                     </button>
                     <button v-if="canCancelOwn" @click="cancelOwnMembership" :disabled="cancelling" class="btn-danger btn-sm self-center"
                         :title="wishi.my_membership_status === 'pending' ? 'Cancel your pending join request' : 'Leave this WISHI (only allowed before it starts)'">
-                        {{ cancelling ? 'Cancelling…' : (wishi.my_membership_status === 'pending' ? '✕ Cancel request' : '✕ Leave WISHI') }}
+                        <XMarkIcon v-if="!cancelling" class="w-4 h-4" aria-hidden="true" />
+                        {{ cancelling ? 'Cancelling…' : (wishi.my_membership_status === 'pending' ? 'Cancel request' : 'Leave WISHI') }}
                     </button>
                 </div>
             </div>
 
-            <!-- Inline alert strip (single line, no extra card) -->
-            <div v-if="wishi.status === 'draft' && isAdmin" class="px-5 py-2 bg-gray-50 border-y border-gray-100 text-xs text-gray-700 flex items-center gap-2">
-                <span>📝</span><span><strong>Draft</strong> — only you can see this. Publish to let members discover & join.</span>
+            <!-- Inline alert strip — one row per state, Heroicon as the visual anchor -->
+            <div v-if="wishi.status === 'draft' && isAdmin" class="px-5 py-2 bg-slate-50 border-y border-slate-100 text-xs text-slate-700 flex items-center gap-2">
+                <DocumentTextIcon class="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+                <span><strong>Draft</strong> — only you can see this. Publish to let members discover &amp; join.</span>
             </div>
             <div v-else-if="wishi.status === 'planned' && !wishi.is_full" class="px-5 py-2 bg-amber-50 border-y border-amber-100 text-xs text-amber-900 flex items-center gap-2">
-                <span>⏳</span>
+                <ClockIcon class="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
                 <span>
                     <strong>Waiting for members</strong> — {{ wishi.seats_remaining }} more needed before start.
                     <span v-if="wishi.pending_members_count"> · {{ wishi.pending_members_count }} pending approval.</span>
@@ -219,14 +259,16 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                 </span>
             </div>
             <div v-else-if="wishi.status === 'planned' && wishi.can_start && isAdmin" class="px-5 py-2 bg-emerald-50 border-y border-emerald-100 text-xs text-emerald-900 flex items-center gap-2">
-                <span>✅</span><span><strong>Ready to start</strong> — all {{ wishi.total_members }} seats filled. Click <em>Start WISHI</em> to open cycle #1.</span>
+                <CheckCircleIcon class="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
+                <span><strong>Ready to start</strong> — all {{ wishi.total_members }} seats filled. Click <em>Start WISHI</em> to open cycle #1.</span>
             </div>
-            <div v-else-if="wishi.status === 'planned' && wishi.is_full && !isAdmin" class="px-5 py-2 bg-indigo-50 border-y border-indigo-100 text-xs text-indigo-900 flex items-center gap-2">
-                <span>⏸️</span><span><strong>All members joined.</strong> Waiting for {{ wishi.creator?.name }} to start this WISHI.</span>
+            <div v-else-if="wishi.status === 'planned' && wishi.is_full && !isAdmin" class="px-5 py-2 bg-brand-50 border-y border-brand-100 text-xs text-brand-900 flex items-center gap-2">
+                <PauseCircleIcon class="w-4 h-4 text-brand-600 shrink-0" aria-hidden="true" />
+                <span><strong>All members joined.</strong> Waiting for {{ wishi.creator?.name }} to start this WISHI.</span>
             </div>
 
             <!-- Stats strip — inline, divided, no card-per-stat -->
-            <div class="px-5 py-3 bg-gradient-to-b from-gray-50/60 to-white grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            <div class="px-5 py-3 bg-linear-to-b from-gray-50/60 to-white grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
                 <div class="px-3 first:pl-0">
                     <div class="text-[10px] uppercase tracking-wide text-gray-400">Cycles opened</div>
                     <div class="text-base font-bold text-emerald-600 mt-0.5">{{ wishi.cycles_completed ?? 0 }}<span class="text-gray-300 font-normal"> / {{ wishi.duration_months }}</span></div>
@@ -247,7 +289,7 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
 
             <!-- Slim progress bar (no labels — they're covered by stats above) -->
             <div class="h-1 bg-gray-100">
-                <div v-if="wishi.status !== 'draft'" class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all" :style="{ width: progress + '%' }"></div>
+                <div v-if="wishi.status !== 'draft'" class="h-full bg-linear-to-r from-indigo-500 to-purple-500 transition-all" :style="{ width: progress + '%' }"></div>
                 <div v-else class="h-full transition-all" :class="wishi.is_full ? 'bg-emerald-500' : 'bg-amber-500'"
                     :style="{ width: Math.min(100, ((wishi.total_joined ?? (wishi.active_members_count + 1)) / Math.max(1, wishi.total_members)) * 100) + '%' }"></div>
             </div>

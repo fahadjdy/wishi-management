@@ -1,7 +1,10 @@
 <script setup>
 import { useRoute } from 'vue-router';
-import AuthLayout from '@/layouts/AuthLayout.vue';
 import { computed } from 'vue';
+import AuthLayout from '@/layouts/AuthLayout.vue';
+import ConfirmModal from '@/components/ConfirmModal.vue';
+import PromptModal from '@/components/PromptModal.vue';
+import CredentialsModal from '@/components/CredentialsModal.vue';
 
 const route = useRoute();
 const layout = computed(() => route.meta.layout || 'app');
@@ -12,4 +15,9 @@ const layout = computed(() => route.meta.layout || 'app');
         <router-view />
     </AuthLayout>
     <router-view v-else />
+
+    <!-- Global, promise-driven modals — one instance each, shown via ui store -->
+    <ConfirmModal />
+    <PromptModal />
+    <CredentialsModal />
 </template>

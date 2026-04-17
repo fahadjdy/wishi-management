@@ -1,12 +1,18 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useWishiStore } from '@/stores/wishi';
 import { useCycleStore } from '@/stores/cycle';
 import { useContributionStore } from '@/stores/contribution';
 import { useAuthStore } from '@/stores/auth';
 import { useToast } from 'vue-toastification';
-import { formatINR, formatDate, cycleStatusLabels } from '@/utils/format';
+import { formatINR, formatDate, formatDateTime, cycleStatusLabels } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
+import {
+    CreditCardIcon, ExclamationTriangleIcon, ShieldCheckIcon,
+    TrophyIcon, LockClosedIcon, BanknotesIcon,
+} from '@heroicons/vue/24/outline';
+import { CheckCircleIcon } from '@heroicons/vue/24/solid';
 
 const route = useRoute();
 const wishiStore = useWishiStore();
@@ -14,6 +20,7 @@ const cycleStore = useCycleStore();
 const contribStore = useContributionStore();
 const auth = useAuthStore();
 const toast = useToast();
+const { confirm: uiConfirm } = useConfirm();
 
 const wishi = computed(() => wishiStore.currentWishi);
 const isAdmin = computed(() => wishi.value?.is_admin);
@@ -21,8 +28,34 @@ const cycles = computed(() => [...(cycleStore.cycles || [])].sort((a, b) => b.cy
 const currentCycle = computed(() => cycles.value.find((c) => c.cycle_number === wishi.value?.current_cycle));
 const myContribution = computed(() => (contribStore.contributions || []).find((c) => c.user_id === auth.user?.id));
 
+// Member's full payment timeline across every cycle of this WISHI.
+// Skipped for admins (they don't have contribution records in their own WISHI —
+// cycle #1 is their organizer payout, and they don't contribute thereafter).
+const myHistory = computed(() => contribStore.myHistory || []);
+const myHistoryMeta = computed(() => contribStore.myHistoryMeta || null);
+const paymentProgress = computed(() => {
+    const m = myHistoryMeta.value;
+    if (!m) return 0;
+    const total = (m.paid_count || 0) + (m.pending_count || 0);
+    if (total === 0) return 0;
+    return Math.round((m.paid_count / total) * 100);
+});
+
+async function loadMyHistory(uuid) {
+    if (!uuid || isAdmin.value) return;
+    try { await contribStore.fetchMyHistory(uuid); } catch {}
+}
+onMounted(() => loadMyHistory(wishi.value?.uuid));
+watch(() => wishi.value?.uuid, loadMyHistory);
+
 async function advance() {
-    if (!confirm('Advance to the next cycle? The current cycle must be completed.')) return;
+    const ok = await uiConfirm({
+        title: 'Open the next cycle?',
+        message: 'The current cycle must be fully completed (winner selected, payout recorded). Contributions will start opening for the new cycle.',
+        confirmText: 'Open next cycle',
+        tone: 'primary',
+    });
+    if (!ok) return;
     try {
         const c = await cycleStore.advance(route.params.uuid);
         toast.success(`Cycle #${c.cycle_number} opened.`);
@@ -79,7 +112,10 @@ function dueColor(days) {
 
             <!-- MEMBER: read-only own-contribution info, no buttons -->
             <div v-if="!isAdmin && myContribution && !myContribution.is_paid && currentCycle" class="surface-padded bg-amber-50 border-amber-200">
-                <h3 class="font-semibold text-amber-900">💳 Your contribution is due</h3>
+                <h3 class="font-semibold text-amber-900 inline-flex items-center gap-1.5">
+                    <CreditCardIcon class="w-4 h-4" aria-hidden="true" />
+                    Your contribution is due
+                </h3>
                 <p class="text-sm text-amber-800 mt-0.5">
                     <strong>{{ formatINR(myContribution.amount) }}</strong>
                     · Cycle #{{ currentCycle.cycle_number }}
@@ -90,7 +126,7 @@ function dueColor(days) {
             </div>
             <div v-else-if="!isAdmin && myContribution?.is_paid && currentCycle" class="surface-padded bg-emerald-50 border-emerald-200">
                 <div class="flex items-center gap-2 text-sm text-emerald-800">
-                    <span>✓</span>
+                    <CheckCircleIcon class="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
                     <span>You paid {{ formatINR(myContribution.amount) }} for cycle #{{ currentCycle.cycle_number }}<span v-if="myContribution.paid_at"> on {{ formatDate(myContribution.paid_at) }}</span><span v-if="myContribution.paid_late" class="text-amber-700"> (late)</span>.</span>
                 </div>
             </div>
@@ -134,23 +170,25 @@ function dueColor(days) {
                                     <span class="badge-gray capitalize">{{ c.mode }}</span>
                                     <span :class="c.status === 'completed' ? 'badge-success' : 'badge-info'" class="capitalize">{{ cycleStatusLabels[c.status] }}</span>
                                     <span v-if="isAdmin && c.unpaid_contributions_count > 0" class="badge-warning">
-                                        ⚠ {{ c.unpaid_contributions_count }} unpaid
+                                        <ExclamationTriangleIcon class="w-3 h-3" aria-hidden="true" />
+                                        {{ c.unpaid_contributions_count }} unpaid
                                     </span>
                                 </div>
-                                <div v-if="c.selection_method === 'organizer_payout'" class="text-xs text-indigo-700 mt-0.5">
-                                    👑 <strong>{{ c.winner?.name || 'Admin' }}</strong> · Organizer payout
-                                    <span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span>
+                                <div v-if="c.selection_method === 'organizer_payout'" class="text-xs text-brand-700 mt-0.5 inline-flex items-center gap-1.5">
+                                    <ShieldCheckIcon class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                                    <span><strong>{{ c.winner?.name || 'Admin' }}</strong> · Organizer payout<span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span></span>
                                 </div>
-                                <div v-else-if="c.winner" class="text-xs text-gray-600 mt-0.5">
-                                    🏆 <strong>{{ c.winner.name }}</strong>
-                                    <span v-if="c.winners_count > 1"> +{{ c.winners_count - 1 }} more</span>
-                                    <span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span>
+                                <div v-else-if="c.winner" class="text-xs text-slate-600 mt-0.5 inline-flex items-center gap-1.5">
+                                    <TrophyIcon class="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden="true" />
+                                    <span><strong>{{ c.winner.name }}</strong><span v-if="c.winners_count > 1"> +{{ c.winners_count - 1 }} more</span><span v-if="c.paid_out_at"> · paid {{ formatDate(c.paid_out_at) }}</span></span>
                                 </div>
-                                <div v-if="isAdmin && c.deferred_pending" class="text-[11px] text-amber-700 mt-0.5">
-                                    🔒 Deferred: {{ formatINR(c.deferred_amount) }} · releases when WISHI ends
+                                <div v-if="isAdmin && c.deferred_pending" class="text-[11px] text-amber-700 mt-0.5 inline-flex items-center gap-1">
+                                    <LockClosedIcon class="w-3 h-3" aria-hidden="true" />
+                                    Deferred: {{ formatINR(c.deferred_amount) }} · releases when WISHI ends
                                 </div>
-                                <div v-else-if="isAdmin && c.deferred_released_at" class="text-[11px] text-emerald-700 mt-0.5">
-                                    ✓ Deferred {{ formatINR(c.deferred_amount) }} released on {{ formatDate(c.deferred_released_at) }}
+                                <div v-else-if="isAdmin && c.deferred_released_at" class="text-[11px] text-emerald-700 mt-0.5 inline-flex items-center gap-1">
+                                    <CheckCircleIcon class="w-3 h-3" aria-hidden="true" />
+                                    Deferred {{ formatINR(c.deferred_amount) }} released on {{ formatDate(c.deferred_released_at) }}
                                 </div>
                             </div>
                         </div>
@@ -160,6 +198,87 @@ function dueColor(days) {
                         </div>
                     </RouterLink>
                 </div>
+            </div>
+
+            <!-- MEMBER-only: full payment timeline across every cycle of this WISHI.
+                 Hidden for admins (no contribution records for them) and when the
+                 member has nothing yet (pending approval, new WISHI etc.). -->
+            <div v-if="!isAdmin && myHistory.length" class="surface-padded">
+                <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
+                    <h3 class="font-semibold inline-flex items-center gap-2">
+                        <BanknotesIcon class="w-5 h-5 text-brand-600" aria-hidden="true" />
+                        My payment history
+                    </h3>
+                    <span v-if="myHistoryMeta" class="text-xs text-slate-500">
+                        <span class="text-emerald-600 font-semibold">{{ myHistoryMeta.paid_count }}</span> paid
+                        · <span class="text-amber-600 font-semibold">{{ myHistoryMeta.pending_count }}</span> pending
+                    </span>
+                </div>
+
+                <div v-if="myHistoryMeta && (myHistoryMeta.paid_count + myHistoryMeta.pending_count) > 0" class="mb-4">
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                        <span>{{ formatINR(myHistoryMeta.total_paid) }} paid so far</span>
+                        <span v-if="myHistoryMeta.total_pending > 0">{{ formatINR(myHistoryMeta.total_pending) }} outstanding</span>
+                    </div>
+                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div class="h-full bg-emerald-500 rounded-full transition-all" :style="{ width: paymentProgress + '%' }"></div>
+                    </div>
+                </div>
+
+                <ol class="space-y-2">
+                    <li v-for="c in myHistory" :key="c.id"
+                        class="flex items-start gap-3 p-3 rounded-lg border transition"
+                        :class="c.is_paid
+                            ? 'border-emerald-200 bg-emerald-50/40'
+                            : daysUntil(c.due_date) < 0
+                                ? 'border-rose-200 bg-rose-50/40'
+                                : daysUntil(c.due_date) <= 1
+                                    ? 'border-amber-200 bg-amber-50/40'
+                                    : 'border-slate-200'"
+                    >
+                        <div class="w-10 h-10 rounded-full font-bold flex items-center justify-center text-sm shrink-0"
+                            :class="c.is_paid
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : daysUntil(c.due_date) < 0
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-slate-100 text-slate-600'"
+                        >
+                            {{ c.cycle?.cycle_number ?? '—' }}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-semibold text-slate-900">Cycle #{{ c.cycle?.cycle_number ?? '—' }}</span>
+                                <span v-if="c.is_paid && !c.paid_late" class="badge-success">
+                                    <CheckCircleIcon class="w-3 h-3" aria-hidden="true" />
+                                    Paid
+                                </span>
+                                <span v-else-if="c.is_paid && c.paid_late" class="badge-warning">Paid late</span>
+                                <span v-else-if="daysUntil(c.due_date) < 0" class="badge-danger">
+                                    <ExclamationTriangleIcon class="w-3 h-3" aria-hidden="true" />
+                                    {{ Math.abs(daysUntil(c.due_date)) }}d overdue
+                                </span>
+                                <span v-else-if="daysUntil(c.due_date) === 0" class="badge-warning">Due today</span>
+                                <span v-else-if="daysUntil(c.due_date) === 1" class="badge-warning">Due tomorrow</span>
+                                <span v-else class="badge-gray">Due in {{ daysUntil(c.due_date) }}d</span>
+                            </div>
+                            <div class="text-xs text-slate-600 mt-0.5 flex flex-wrap items-center gap-x-1.5">
+                                <span class="font-semibold text-slate-800">{{ formatINR(c.amount) }}</span>
+                                <span>· Due {{ formatDate(c.due_date) }}</span>
+                                <span v-if="c.is_paid" class="text-emerald-700">· Paid {{ formatDateTime(c.paid_at) }}</span>
+                            </div>
+                            <div v-if="c.is_paid && (c.payment_method || c.payment_reference)" class="text-[11px] text-slate-500 mt-0.5">
+                                <span v-if="c.payment_method" class="capitalize">via {{ c.payment_method.replace(/_/g, ' ') }}</span><span v-if="c.payment_method && c.payment_reference"> · </span><span v-if="c.payment_reference">ref <span class="font-mono text-slate-700">{{ c.payment_reference }}</span></span>
+                            </div>
+                            <RouterLink v-if="c.cycle?.id" :to="`/wishis/${wishi.uuid}/cycles/${c.cycle.id}`" class="text-[11px] text-brand-700 hover:underline mt-1 inline-block">
+                                Open cycle →
+                            </RouterLink>
+                        </div>
+                    </li>
+                </ol>
+
+                <p class="text-[11px] text-slate-500 mt-3">
+                    Payments are recorded by the WISHI admin once they receive the money. Ask them if a payment you sent isn't showing here yet.
+                </p>
             </div>
         </div>
 
@@ -187,11 +306,17 @@ function dueColor(days) {
                 <h3 class="font-semibold mb-3">Deferred payouts</h3>
                 <div class="space-y-2 text-sm">
                     <div v-if="wishi.deferred_pending_total > 0" class="flex justify-between">
-                        <span class="text-amber-700">🔒 Pending release</span>
+                        <span class="text-amber-700 inline-flex items-center gap-1.5">
+                            <LockClosedIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                            Pending release
+                        </span>
                         <strong class="text-amber-700">{{ formatINR(wishi.deferred_pending_total) }}</strong>
                     </div>
                     <div v-if="wishi.deferred_released_total > 0" class="flex justify-between">
-                        <span class="text-emerald-700">✓ Released</span>
+                        <span class="text-emerald-700 inline-flex items-center gap-1.5">
+                            <CheckCircleIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                            Released
+                        </span>
                         <strong class="text-emerald-700">{{ formatINR(wishi.deferred_released_total) }}</strong>
                     </div>
                 </div>

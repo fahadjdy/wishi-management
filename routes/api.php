@@ -57,6 +57,9 @@ Route::prefix('v1')->group(function () {
         Route::put('/wishis/{wishi}/cycles/{cycle}/surplus', [CycleController::class, 'surplus'])->middleware('throttle:sensitive');
         Route::put('/wishis/{wishi}/cycles/{cycle}/payout', [CycleController::class, 'payout'])->middleware('throttle:sensitive');
 
+        // Member's own payment timeline across every cycle of this WISHI.
+        Route::get('/wishis/{wishi}/my-contributions', [ContributionController::class, 'myHistory']);
+
         Route::get('/wishis/{wishi}/cycles/{cycle}/contributions', [ContributionController::class, 'index']);
         Route::post('/wishis/{wishi}/cycles/{cycle}/contributions', [ContributionController::class, 'store'])->middleware('throttle:sensitive');
         Route::delete('/wishis/{wishi}/cycles/{cycle}/contributions/{contribution}/payment', [ContributionController::class, 'revert'])->middleware('throttle:sensitive');

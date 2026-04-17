@@ -61,6 +61,43 @@ class ContributionController extends Controller
         return response()->json(['data' => new ContributionResource($updated)]);
     }
 
+    /**
+     * Authenticated user's own contribution history for a single WISHI, across
+     * every cycle they have a contribution record in. Ordered chronologically
+     * (oldest cycle first) so the UI can render it as a payment timeline.
+     *
+     * Returns an empty collection for viewers who are not members (e.g. the
+     * WISHI admin, or a user who hasn't joined). That's the right behavior —
+     * admins don't have contribution records in their own WISHI (organizer
+     * payout handles cycle #1), and non-members simply have nothing to show.
+     */
+    public function myHistory(Request $request, Wishi $wishi): JsonResponse
+    {
+        $this->authorize('view', $wishi);
+
+        // Qualify `wishi_id` / `user_id` with the table name — both `contributions`
+        // and `cycles` carry a `wishi_id` column, so an unqualified WHERE is
+        // ambiguous once we JOIN cycles for cycle_number ordering.
+        $contributions = Contribution::query()
+            ->join('cycles', 'cycles.id', '=', 'contributions.cycle_id')
+            ->where('contributions.wishi_id', $wishi->id)
+            ->where('contributions.user_id', $request->user()->id)
+            ->with('cycle')
+            ->orderBy('cycles.cycle_number')
+            ->select('contributions.*')
+            ->get();
+
+        return response()->json([
+            'data' => ContributionResource::collection($contributions),
+            'meta' => [
+                'paid_count' => $contributions->whereNotNull('paid_at')->count(),
+                'pending_count' => $contributions->whereNull('paid_at')->count(),
+                'total_paid' => (float) $contributions->whereNotNull('paid_at')->sum('amount'),
+                'total_pending' => (float) $contributions->whereNull('paid_at')->sum('amount'),
+            ],
+        ]);
+    }
+
     public function revert(Request $request, Wishi $wishi, Cycle $cycle, Contribution $contribution): JsonResponse
     {
         $this->scope($wishi, $cycle);

@@ -12,6 +12,11 @@ import * as am5 from '@amcharts/amcharts5';
 import * as am5percent from '@amcharts/amcharts5/percent';
 import * as am5xy from '@amcharts/amcharts5/xy';
 import am5themes_Animated from '@amcharts/amcharts5/themes/Animated';
+import { useConfirm } from '@/composables/useConfirm';
+import {
+    ExclamationTriangleIcon, ClockIcon, RocketLaunchIcon,
+    CheckCircleIcon, PlusIcon,
+} from '@heroicons/vue/24/outline';
 
 const dash = useDashboardStore();
 const auth = useAuthStore();
@@ -19,6 +24,7 @@ const wishiStore = useWishiStore();
 const adminStore = useAdminStore();
 const memberStore = useMemberStore();
 const toast = useToast();
+const { prompt: uiPrompt } = useConfirm();
 const joiningUuid = ref(null);
 const pendingActionId = ref(null);
 
@@ -61,7 +67,15 @@ async function approveRequest(r) {
 }
 
 async function rejectRequest(r) {
-    const reason = prompt(`Reject ${r.user.name}'s request for ${r.wishi.name}? (optional reason)`);
+    const reason = await uiPrompt({
+        title: `Reject ${r.user.name}?`,
+        message: `Their join request for ${r.wishi.name} will be declined.`,
+        label: 'Reason (optional — shown in the audit log)',
+        placeholder: 'e.g. credit score too low, already in another WISHI',
+        multiline: true,
+        confirmText: 'Reject request',
+        cancelText: 'Keep request',
+    });
     if (reason === null) return;
     pendingActionId.value = r.member_id;
     try {
@@ -112,26 +126,40 @@ function openingLabel(days) {
 }
 
 function openingClass(days) {
-    if (days === null) return 'bg-gray-50 border-gray-200';
-    if (days < 0) return 'bg-red-50 border-red-200';
+    if (days === null) return 'bg-slate-50 border-slate-200';
+    if (days < 0) return 'bg-rose-50 border-rose-200';
     if (days <= 1) return 'bg-amber-50 border-amber-200';
-    return 'bg-indigo-50 border-indigo-200';
+    return 'bg-brand-50 border-brand-200';
 }
 
 function openingTextClass(days) {
-    if (days === null) return 'text-gray-500';
-    if (days < 0) return 'text-red-700';
+    if (days === null) return 'text-slate-500';
+    if (days < 0) return 'text-rose-700';
     if (days <= 1) return 'text-amber-700';
-    return 'text-indigo-700';
+    return 'text-brand-700';
 }
 
-// Product rule: warning color (red) is shown ONLY when a payment is actually
+function openingIcon(days) {
+    if (days === null) return RocketLaunchIcon;
+    if (days < 0) return ExclamationTriangleIcon;
+    if (days <= 1) return ClockIcon;
+    return RocketLaunchIcon;
+}
+
+function openingIconTone(days) {
+    if (days === null) return 'bg-slate-100 text-slate-500';
+    if (days < 0) return 'bg-rose-100 text-rose-600';
+    if (days <= 1) return 'bg-amber-100 text-amber-600';
+    return 'bg-brand-100 text-brand-600';
+}
+
+// Product rule: warning color (rose) is shown ONLY when a payment is actually
 // late — i.e. the due date has passed. Upcoming payments (even "due today"
-// or "due tomorrow") stay neutral so the dashboard doesn't cry wolf. See R5.
+// or "due tomorrow") stay neutral so the dashboard doesn't cry wolf.
 function urgencyClass(days) {
-    if (days === null) return 'text-gray-500';
-    if (days < 0) return 'text-red-600';
-    return 'text-gray-600';
+    if (days === null) return 'text-slate-500';
+    if (days < 0) return 'text-rose-600';
+    return 'text-slate-600';
 }
 
 function urgencyLabel(days) {
@@ -242,10 +270,11 @@ async function renderCharts() {
     // Refs only exist after the admin <template> branch has rendered; guard so
     // member views (where these chart containers are absent) don't blow up.
     if (!d || !pieRoleEl.value) return;
-    buildPie(pieRoleEl.value, d.users_by_role, 'role', 'count', [0x6366f1, 0x94a3b8]);
-    buildPie(pieTypeEl.value, d.wishis_by_type, 'cycle_type', 'count', [0x10b981, 0xf59e0b, 0x8b5cf6]);
-    buildBar(barTrustEl.value, d.users_by_trust, 'trust_level', 'count', 0x4f46e5);
-    buildLine(lineSignupsEl.value, d.signups_last_30_days, 'date', 'count', 0x6366f1);
+    // Brand-led palette: teal primary + amber/violet accent + emerald for money.
+    buildPie(pieRoleEl.value, d.users_by_role, 'role', 'count', [0x0d9488, 0x94a3b8]);
+    buildPie(pieTypeEl.value, d.wishis_by_type, 'cycle_type', 'count', [0x14b8a6, 0xf59e0b, 0x7c3aed]);
+    buildBar(barTrustEl.value, d.users_by_trust, 'trust_level', 'count', 0x0d9488);
+    buildLine(lineSignupsEl.value, d.signups_last_30_days, 'date', 'count', 0x0d9488);
     buildLine(areaMoneyEl.value, d.contributions_last_30_days, 'date', 'amount', 0x10b981);
 }
 
@@ -259,17 +288,18 @@ onBeforeUnmount(dispose);
 <template>
     <div class="space-y-6">
         <!-- Hero -->
-        <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-6 sm:p-7 text-white shadow-lg shadow-indigo-500/20">
+        <div class="bg-linear-to-br from-brand-700 via-brand-800 to-slate-900 rounded-2xl p-6 sm:p-7 text-white shadow-lg shadow-brand-700/20">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <p class="text-indigo-100 text-sm">Welcome back,</p>
-                    <h1 class="text-2xl sm:text-3xl font-bold mt-0.5">{{ auth.user?.name }} 👋</h1>
-                    <p class="text-indigo-100 text-sm mt-2">
+                    <p class="text-brand-100 text-sm">Welcome back,</p>
+                    <h1 class="text-2xl sm:text-3xl font-bold mt-0.5">{{ auth.user?.name }}</h1>
+                    <p class="text-brand-50/90 text-sm mt-2">
                         {{ isAdmin ? 'Platform overview — WISHIs, members and money at a glance.' : "Here's a snapshot of all your WISHIs and contributions." }}
                     </p>
                 </div>
-                <RouterLink v-if="isAdmin" to="/wishis/create" class="bg-white text-indigo-700 hover:bg-indigo-50 font-semibold px-5 py-2.5 rounded-lg text-sm shadow-md">
-                    + Create new WISHI
+                <RouterLink v-if="isAdmin" to="/wishis/create" class="bg-white text-brand-700 hover:bg-brand-50 font-semibold px-5 py-2.5 rounded-lg text-sm shadow-md inline-flex items-center gap-2">
+                    <PlusIcon class="w-4 h-4" aria-hidden="true" />
+                    Create new WISHI
                 </RouterLink>
             </div>
         </div>
@@ -284,10 +314,8 @@ onBeforeUnmount(dispose);
                     :class="openingClass(daysUntil(w.start_date))">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div class="flex items-start gap-3 min-w-0 flex-1">
-                            <div class="text-3xl">
-                                <span v-if="daysUntil(w.start_date) < 0">⚠️</span>
-                                <span v-else-if="daysUntil(w.start_date) <= 1">⏰</span>
-                                <span v-else>🚀</span>
+                            <div class="w-11 h-11 rounded-full flex items-center justify-center shrink-0" :class="openingIconTone(daysUntil(w.start_date))">
+                                <component :is="openingIcon(daysUntil(w.start_date))" class="w-6 h-6" aria-hidden="true" />
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="text-xs uppercase tracking-wider font-semibold" :class="openingTextClass(daysUntil(w.start_date))">
@@ -329,7 +357,7 @@ onBeforeUnmount(dispose);
                     </div>
                     <ul class="divide-y divide-amber-100">
                         <li v-for="r in pendingJoinRequests" :key="r.member_id" class="px-5 py-3 flex items-center gap-3 flex-wrap">
-                            <div class="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            <div class="w-9 h-9 rounded-full overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
                                 <img v-if="r.user.avatar_url" :src="r.user.avatar_url" :alt="r.user.name" class="w-full h-full object-cover" />
                                 <span v-else>{{ (r.user.name || '').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}</span>
                             </div>
@@ -434,26 +462,28 @@ onBeforeUnmount(dispose);
         <!-- ============================ MEMBER VIEW ============================ -->
         <template v-else>
             <!-- Late-payment warning (only when the member is actually behind) -->
-            <div v-if="latePayments.length" class="surface-padded bg-red-50 border-red-200">
+            <div v-if="latePayments.length" class="surface-padded bg-rose-50 border-rose-200">
                 <div class="flex items-start gap-3">
-                    <div class="text-3xl">⚠️</div>
+                    <div class="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                        <ExclamationTriangleIcon class="w-6 h-6" aria-hidden="true" />
+                    </div>
                     <div class="min-w-0 flex-1">
-                        <div class="text-xs uppercase tracking-wider font-semibold text-red-700">
+                        <div class="text-xs uppercase tracking-wider font-semibold text-rose-700">
                             {{ latePayments.length }} late payment{{ latePayments.length !== 1 ? 's' : '' }}
                         </div>
-                        <p class="text-sm text-red-800 mt-1">
+                        <p class="text-sm text-rose-800 mt-1">
                             Please clear these with the WISHI admin as soon as possible — late payments reduce your credit score.
                         </p>
-                        <ul class="mt-2 divide-y divide-red-200 text-sm">
+                        <ul class="mt-2 divide-y divide-rose-200 text-sm">
                             <li v-for="p in latePayments" :key="p.id" class="py-2 flex items-center justify-between gap-2 flex-wrap">
                                 <div class="min-w-0">
-                                    <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="text-red-900 font-medium hover:underline truncate block">
+                                    <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="text-rose-900 font-medium hover:underline truncate block">
                                         {{ p.wishi.name }} · Cycle #{{ p.cycle_number }}
                                     </RouterLink>
-                                    <span v-else class="text-red-900 font-medium truncate">WISHI · Cycle #{{ p.cycle_number }}</span>
-                                    <div class="text-[11px] text-red-700 mt-0.5">Was due on {{ formatDate(p.due_date) }}</div>
+                                    <span v-else class="text-rose-900 font-medium truncate">WISHI · Cycle #{{ p.cycle_number }}</span>
+                                    <div class="text-[11px] text-rose-700 mt-0.5">Was due on {{ formatDate(p.due_date) }}</div>
                                 </div>
-                                <span class="text-red-700 font-semibold shrink-0">{{ formatINR(p.amount) }} · {{ urgencyLabel(daysUntil(p.due_date)) }}</span>
+                                <span class="text-rose-700 font-semibold shrink-0">{{ formatINR(p.amount) }} · {{ urgencyLabel(daysUntil(p.due_date)) }}</span>
                             </li>
                         </ul>
                     </div>
@@ -482,10 +512,8 @@ onBeforeUnmount(dispose);
                     :class="openingClass(daysUntil(w.start_date))">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div class="flex items-start gap-3 min-w-0 flex-1">
-                            <div class="text-3xl">
-                                <span v-if="daysUntil(w.start_date) < 0">⚠️</span>
-                                <span v-else-if="daysUntil(w.start_date) <= 1">⏰</span>
-                                <span v-else>🚀</span>
+                            <div class="w-11 h-11 rounded-full flex items-center justify-center shrink-0" :class="openingIconTone(daysUntil(w.start_date))">
+                                <component :is="openingIcon(daysUntil(w.start_date))" class="w-6 h-6" aria-hidden="true" />
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="text-xs uppercase tracking-wider font-semibold" :class="openingTextClass(daysUntil(w.start_date))">
@@ -519,7 +547,7 @@ onBeforeUnmount(dispose);
                         <h2 class="text-lg font-semibold">Discover WISHIs</h2>
                         <p class="text-xs text-gray-500">New WISHIs accepting members. Tap to view or request to join.</p>
                     </div>
-                    <RouterLink to="/wishis?scope=discover" class="btn-ghost btn-sm">See all →</RouterLink>
+                    <RouterLink to="/wishis" class="btn-ghost btn-sm">See all →</RouterLink>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div v-for="w in joinableWishis" :key="w.uuid" class="p-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition flex flex-col gap-2">
@@ -585,8 +613,10 @@ onBeforeUnmount(dispose);
                         <h2 class="text-lg font-semibold">Upcoming Payments</h2>
                         <span class="badge-brand">{{ dash.data?.upcoming_payments?.length ?? 0 }} due</span>
                     </div>
-                    <div v-if="!dash.data?.upcoming_payments?.length" class="text-center py-10 text-gray-400 text-sm">
-                        No upcoming payments — you're all caught up! 🎉
+                    <div v-if="!dash.data?.upcoming_payments?.length" class="text-center py-10 text-sm">
+                        <CheckCircleIcon class="w-10 h-10 mx-auto text-emerald-500 mb-2" aria-hidden="true" />
+                        <div class="font-semibold text-slate-700">You're all caught up</div>
+                        <div class="text-xs text-slate-500">No upcoming payments right now.</div>
                     </div>
                     <div v-else class="divide-y divide-gray-100">
                         <div v-for="p in dash.data.upcoming_payments" :key="p.id" class="py-3 flex items-center justify-between gap-3">

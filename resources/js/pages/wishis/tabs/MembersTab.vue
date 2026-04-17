@@ -7,12 +7,15 @@ import { useAdminStore } from '@/stores/admin';
 import { useToast } from 'vue-toastification';
 import api from '@/api/client';
 import { formatDate, trustColor, memberStatusLabels } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
+import { TrophyIcon, UserPlusIcon, XMarkIcon, CheckIcon } from '@heroicons/vue/24/outline';
 
 const route = useRoute();
 const store = useMemberStore();
 const wishiStore = useWishiStore();
 const adminStore = useAdminStore();
 const toast = useToast();
+const { confirm: uiConfirm } = useConfirm();
 
 const filter = ref('all');
 const expanded = ref(new Set());
@@ -81,7 +84,13 @@ async function approve(id) {
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
 }
 async function reject(id) {
-    if (!confirm('Reject this join request?')) return;
+    const ok = await uiConfirm({
+        title: 'Reject join request?',
+        message: 'The member will be notified that their request was declined. Their seat goes back to the pool.',
+        confirmText: 'Reject request',
+        tone: 'danger',
+    });
+    if (!ok) return;
     try {
         await store.reject(route.params.uuid, id);
         toast.info('Request rejected.');
@@ -89,7 +98,14 @@ async function reject(id) {
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
 }
 async function remove(id) {
-    if (!confirm('Remove this member?')) return;
+    const m = store.members.find((x) => x.id === id);
+    const ok = await uiConfirm({
+        title: 'Cancel this member?',
+        message: `${m?.user?.name || 'The member'} will lose their seat in this WISHI. This can only be done while the WISHI hasn't started yet.`,
+        confirmText: 'Cancel member',
+        tone: 'danger',
+    });
+    if (!ok) return;
     try {
         await store.remove(route.params.uuid, id);
         toast.success('Member removed.');
@@ -156,13 +172,13 @@ const statusBadge = {
         <div class="md:hidden space-y-2">
             <div v-for="m in filtered" :key="m.id" class="surface-padded">
                 <div class="flex items-start gap-3">
-                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                    <div class="w-10 h-10 rounded-full bg-linear-to-br from-brand-500 to-brand-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
                         {{ m.user?.name?.split(' ').map(p => p[0]).slice(0,2).join('') }}
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-1.5 flex-wrap">
-                            <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-amber-100 text-amber-800 font-semibold text-[11px]">👑 #1</span>
-                            <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-[11px]">#{{ m.token_no }}</span>
+                            <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-amber-100 text-amber-800 font-semibold text-[11px]" title="Organizer — cycle #1 payout">#1</span>
+                            <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md bg-brand-50 text-brand-700 font-semibold text-[11px]">#{{ m.token_no }}</span>
                             <span class="font-medium">{{ m.user?.name }}</span>
                             <span v-if="m.is_organizer_virtual" class="badge-brand">Organizer · Cycle #1 payout</span>
                             <span v-else :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span>
@@ -172,7 +188,10 @@ const statusBadge = {
                             <span>Credit {{ m.user?.credit_score }}%</span>
                             <span :class="trustColor[m.user?.trust_level]" class="capitalize">{{ m.user?.trust_level }}</span>
                             <span v-if="m.on_time_rate !== null && m.on_time_rate !== undefined" :class="onTimeColor(m.on_time_rate)" class="font-medium">On-time {{ m.on_time_rate }}%</span>
-                            <span v-if="m.has_won" class="badge-success">🏆 Cycle #{{ m.won_in_cycle }}</span>
+                            <span v-if="m.has_won" class="badge-success">
+                                <TrophyIcon class="w-3 h-3" aria-hidden="true" />
+                                Cycle #{{ m.won_in_cycle }}
+                            </span>
                         </div>
                         <div v-if="isAdmin" class="flex gap-1.5 mt-2 flex-wrap">
                             <button v-if="m.status === 'pending'" @click="approve(m.id)" class="btn-success btn-sm">Approve</button>
@@ -203,13 +222,13 @@ const statusBadge = {
                     <template v-for="m in filtered" :key="m.id">
                         <tr class="hover:bg-gray-50 cursor-pointer" @click="toggle(m.id)">
                             <td class="px-4 py-3">
-                                <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-amber-100 text-amber-800 font-semibold text-xs" title="Organizer — cycle #1 payout">👑 #1</span>
-                                <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-xs">#{{ m.token_no }}</span>
+                                <span v-if="m.is_organizer_virtual" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-amber-100 text-amber-800 font-semibold text-xs" title="Organizer — cycle #1 payout">#1</span>
+                                <span v-else-if="m.token_no" class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-md bg-brand-50 text-brand-700 font-semibold text-xs">#{{ m.token_no }}</span>
                                 <span v-else class="text-gray-300 text-xs">—</span>
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                                    <div class="w-9 h-9 rounded-full bg-linear-to-br from-brand-500 to-brand-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
                                         {{ m.user?.name?.split(' ').map(p => p[0]).slice(0,2).join('') }}
                                     </div>
                                     <div>
@@ -228,7 +247,7 @@ const statusBadge = {
                                 </div>
                             </td>
                             <td class="px-4 py-3">
-                                <span v-if="m.is_organizer_virtual" class="badge-brand">👑 Organizer</span>
+                                <span v-if="m.is_organizer_virtual" class="badge-brand">Organizer</span>
                                 <span v-else :class="statusBadge[m.status]" class="capitalize">{{ memberStatusLabels[m.status] }}</span>
                             </td>
                             <td class="px-4 py-3">
@@ -260,7 +279,10 @@ const statusBadge = {
                                 <div class="space-y-1.5">
                                     <div v-for="h in m.user.wishi_history" :key="h.wishi_id" class="flex items-center gap-2 text-sm flex-wrap">
                                         <span class="font-medium">{{ h.wishi_name }}</span>
-                                        <span v-if="h.has_won" class="badge-success">🏆 Opened cycle #{{ h.won_in_cycle }}<span v-if="h.won_date"> on {{ formatDate(h.won_date) }}</span></span>
+                                        <span v-if="h.has_won" class="badge-success">
+                                            <TrophyIcon class="w-3 h-3" aria-hidden="true" />
+                                            Opened cycle #{{ h.won_in_cycle }}<span v-if="h.won_date"> on {{ formatDate(h.won_date) }}</span>
+                                        </span>
                                         <span v-else class="badge-gray">Yet to win</span>
                                     </div>
                                 </div>

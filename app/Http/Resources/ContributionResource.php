@@ -25,6 +25,21 @@ class ContributionResource extends JsonResource
             'payment_method' => $this->payment_method,
             'payment_reference' => $this->payment_reference,
             'user' => new UserSummaryResource($this->whenLoaded('user')),
+            // Cycle context — included only when the relation is eager-loaded,
+            // so per-cycle endpoints don't pay for it but aggregate endpoints
+            // (like /my-contributions) can expose cycle_number + winner info.
+            'cycle' => $this->when($this->relationLoaded('cycle') && $this->cycle, function () {
+                return [
+                    'id' => $this->cycle->id,
+                    'cycle_number' => $this->cycle->cycle_number,
+                    'mode' => $this->cycle->mode,
+                    'status' => $this->cycle->status,
+                    'winner_id' => $this->cycle->winner_id,
+                    'selection_method' => $this->cycle->selection_method,
+                    'paid_out_at' => optional($this->cycle->paid_out_at)?->toDateString(),
+                    'contribution_due_at' => optional($this->cycle->contribution_due_at)?->toIso8601String(),
+                ];
+            }),
         ];
     }
 }

@@ -6,12 +6,15 @@ import { useAuthStore } from '@/stores/auth';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { useToast } from 'vue-toastification';
 import { formatDate, formatDateTime, formatINR, trustColor } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
+import { TrophyIcon } from '@heroicons/vue/24/outline';
 
 const store = useAdminStore();
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { confirm: uiConfirm, showCredentials } = useConfirm();
 
 const userId = computed(() => Number(route.params.id));
 const user = computed(() => store.currentUser);
@@ -89,7 +92,13 @@ async function saveProfile() {
 }
 
 async function removeAvatar() {
-    if (! confirm("Remove this member's profile photo?")) return;
+    const ok = await uiConfirm({
+        title: 'Remove profile photo',
+        message: `Remove ${user.value?.name || 'this member'}'s profile photo?`,
+        confirmText: 'Remove photo',
+        tone: 'danger',
+    });
+    if (! ok) return;
     try {
         const fd = new FormData();
         fd.append('remove_avatar', '1');
@@ -118,13 +127,28 @@ async function resetPassword() {
         pwErrors.value = { password: ['Password must be at least 8 characters.'] };
         return;
     }
-    if (! confirm(`Reset ${user.value.name}'s password to "${pwForm.password}"? You'll need to share this with them manually.`)) return;
+    const ok = await uiConfirm({
+        title: 'Reset password',
+        message: `A new password will be set for ${user.value.name}. You'll need to share it with them securely — no email is sent.`,
+        confirmText: 'Reset password',
+        cancelText: 'Not now',
+        tone: 'warning',
+    });
+    if (! ok) return;
     pwSaving.value = true;
     pwErrors.value = {};
     try {
-        await store.resetUserPassword(userId.value, pwForm.password);
-        toast.success(`Password reset. Share: ${user.value.email} / ${pwForm.password}`, { timeout: 10000 });
+        const newPassword = pwForm.password;
+        const email = user.value.email;
+        const name = user.value.name;
+        await store.resetUserPassword(userId.value, newPassword);
         pwForm.password = '';
+        await showCredentials({
+            title: 'Password reset',
+            description: `Share the new login details with ${name} securely. The password won't be shown again — reset again here if they lose it.`,
+            email,
+            password: newPassword,
+        });
     } catch (e) {
         if (e.response?.status === 422) pwErrors.value = e.response.data.errors || {};
         else toast.error(e.response?.data?.message || 'Failed.');
@@ -153,7 +177,16 @@ async function unlockUser() {
 
 // ---------- Toggle admin / Delete / Restore ----------
 async function toggleAdmin() {
-    if (! confirm(`${user.value.is_admin ? 'Revoke' : 'Grant'} platform admin for ${user.value.name}?`)) return;
+    const granting = !user.value.is_admin;
+    const ok = await uiConfirm({
+        title: granting ? 'Grant platform admin?' : 'Revoke platform admin?',
+        message: granting
+            ? `${user.value.name} will be able to create WISHIs and manage all members. Only grant this to people you fully trust.`
+            : `${user.value.name} will lose access to admin features. Existing WISHIs they created remain unchanged.`,
+        confirmText: granting ? 'Grant admin' : 'Revoke admin',
+        tone: granting ? 'warning' : 'danger',
+    });
+    if (! ok) return;
     try {
         await store.toggleAdmin(userId.value);
         toast.success('Role updated.');
@@ -161,7 +194,13 @@ async function toggleAdmin() {
     } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
 }
 async function softDelete() {
-    if (! confirm(`Soft-delete ${user.value.name}? They can be restored later.`)) return;
+    const ok = await uiConfirm({
+        title: 'Delete this account?',
+        message: `${user.value.name} will no longer be able to sign in. Their WISHI memberships are preserved and the account can be restored any time from the filter list.`,
+        confirmText: 'Delete account',
+        tone: 'danger',
+    });
+    if (! ok) return;
     try {
         await store.remove(userId.value);
         toast.success('Member deleted.');
@@ -206,7 +245,18 @@ async function markPaid(c) {
     finally { busyContributionId.value = null; }
 }
 async function undoPaid(c) {
-    if (! confirm(`Undo ${formatINR(c.amount)} payment for cycle #${c.cycle_number}? The credit-score change will also be reversed.`)) return;
+    const ok = await uiConfirm({
+        title: 'Undo payment',
+        message: `This will reverse ${user.value?.name || 'the member'}'s payment AND their credit-score change. Use only if the money wasn't actually received.`,
+        meta: {
+            'WISHI': c.wishi_name || '—',
+            'Cycle': `#${c.cycle_number}`,
+            'Amount': formatINR(c.amount),
+        },
+        confirmText: 'Yes, undo payment',
+        tone: 'danger',
+    });
+    if (! ok) return;
     busyContributionId.value = c.id;
     try {
         await store.revertContribution(c.wishi_uuid, c.cycle_id, c.id);
@@ -237,9 +287,9 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
         <template v-else-if="user">
             <!-- Hero -->
             <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                <div class="h-16 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                <div class="h-16 bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
                 <div class="px-6 pb-5 -mt-10 flex flex-wrap items-end gap-5">
-                    <div class="w-20 h-20 rounded-full ring-4 ring-white shadow-md overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white text-xl font-bold shrink-0">
+                    <div class="w-20 h-20 rounded-full ring-4 ring-white shadow-md overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white text-xl font-bold shrink-0">
                         <img v-if="avatarPreview || user.avatar_url" :src="avatarPreview || user.avatar_url" :alt="user.name" class="w-full h-full object-cover" />
                         <span v-else>{{ initials }}</span>
                     </div>
@@ -265,7 +315,7 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
             <section class="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
                 <h3 class="font-semibold">Profile details</h3>
                 <div class="flex items-center gap-4">
-                    <div class="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-slate-500 to-slate-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                    <div class="w-16 h-16 rounded-full overflow-hidden bg-linear-to-br from-slate-500 to-slate-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
                         <img v-if="avatarPreview || user.avatar_url" :src="avatarPreview || user.avatar_url" :alt="user.name" class="w-full h-full object-cover" />
                         <span v-else>{{ initials }}</span>
                     </div>
@@ -431,7 +481,10 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
                             </div>
                             <div class="flex items-center gap-1.5 shrink-0">
                                 <span :class="m.membership_status === 'pending' ? 'badge-warning' : 'badge-success'" class="capitalize">{{ m.membership_status }}</span>
-                                <span v-if="m.has_won" class="badge-info">🏆 #{{ m.won_in_cycle }}</span>
+                                <span v-if="m.has_won" class="badge-info">
+                                    <TrophyIcon class="w-3 h-3" aria-hidden="true" />
+                                    #{{ m.won_in_cycle }}
+                                </span>
                             </div>
                         </li>
                     </ul>
@@ -452,7 +505,7 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="c in detail.pending_contributions" :key="c.id">
-                                <td class="px-3 py-2 truncate max-w-[200px]">{{ c.wishi_name }}</td>
+                                <td class="px-3 py-2 truncate max-w-50">{{ c.wishi_name }}</td>
                                 <td class="px-3 py-2">#{{ c.cycle_number }}</td>
                                 <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
                                 <td class="px-3 py-2">
@@ -487,7 +540,7 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="c in detail.paid_contributions" :key="c.id">
-                                <td class="px-3 py-2 truncate max-w-[200px]">{{ c.wishi_name }}</td>
+                                <td class="px-3 py-2 truncate max-w-50">{{ c.wishi_name }}</td>
                                 <td class="px-3 py-2">#{{ c.cycle_number }}</td>
                                 <td class="px-3 py-2 text-right font-semibold">{{ formatINR(c.amount) }}</td>
                                 <td class="px-3 py-2">

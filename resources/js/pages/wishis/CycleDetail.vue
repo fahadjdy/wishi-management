@@ -10,6 +10,12 @@ import { useAuthStore } from '@/stores/auth';
 import { useToast } from 'vue-toastification';
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs';
 import { formatINR, formatDate, formatDateTime, cycleStatusLabels } from '@/utils/format';
+import { useConfirm } from '@/composables/useConfirm';
+import {
+    ClockIcon, LockClosedIcon, ExclamationTriangleIcon, TrophyIcon,
+    BanknotesIcon, ShieldCheckIcon, CheckIcon,
+} from '@heroicons/vue/24/outline';
+import { CheckCircleIcon } from '@heroicons/vue/24/solid';
 
 const route = useRoute();
 const cycleStore = useCycleStore();
@@ -19,6 +25,7 @@ const tenderStore = useTenderStore();
 const memberStore = useMemberStore();
 const auth = useAuthStore();
 const toast = useToast();
+const { confirm: uiConfirm } = useConfirm();
 
 const wishi = computed(() => wishiStore.currentWishi);
 const cycle = computed(() => cycleStore.currentCycle);
@@ -219,7 +226,18 @@ async function recordMemberPayment(userId) {
 }
 
 async function undoPayment(contribution) {
-    if (!confirm(`Undo this ${Number(contribution.amount).toLocaleString('en-IN')} ₹ payment for ${contribution.user?.name || 'this member'}? The credit-score change will also be reversed.`)) return;
+    const ok = await uiConfirm({
+        title: 'Undo payment',
+        message: `This will reverse ${contribution.user?.name || 'the member'}'s payment AND their credit-score change. Use only if the money wasn't actually received.`,
+        meta: {
+            'Member': contribution.user?.name || '—',
+            'Amount': formatINR(contribution.amount),
+            'Cycle': `#${cycle.value?.cycle_number ?? '—'}`,
+        },
+        confirmText: 'Yes, undo payment',
+        tone: 'danger',
+    });
+    if (!ok) return;
     loading.value = true;
     try {
         await contribStore.revert(route.params.uuid, route.params.cycleId, contribution.id);
@@ -316,7 +334,7 @@ const eligibleMembers = computed(() =>
                             class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
                             :class="statusIndex(cycle.status) >= statusIndex(s.key) ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'"
                         >
-                            <span v-if="statusIndex(cycle.status) > statusIndex(s.key)">✓</span>
+                            <CheckIcon v-if="statusIndex(cycle.status) > statusIndex(s.key)" class="w-4 h-4" aria-hidden="true" />
                             <span v-else>{{ i + 1 }}</span>
                         </div>
                         <div class="text-xs mt-1.5 text-gray-600 hidden sm:block">{{ s.label }}</div>
@@ -332,14 +350,19 @@ const eligibleMembers = computed(() =>
                 <div v-if="cycle.mode === 'tender'" class="surface-padded">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="font-semibold">Tender bidding</h3>
-                        <div v-if="cycle.is_bidding_open" class="text-sm text-amber-600 font-medium">⏱ Closes in {{ countdown }}</div>
+                        <div v-if="cycle.is_bidding_open" class="text-sm text-amber-600 font-medium inline-flex items-center gap-1.5">
+                            <ClockIcon class="w-4 h-4" aria-hidden="true" />
+                            Closes in {{ countdown }}
+                        </div>
                         <div v-else-if="cycle.tender_closes_at" class="text-sm text-gray-500">Closed {{ formatDateTime(cycle.tender_closes_at) }}</div>
                     </div>
 
                     <!-- Member already placed bid → locked (cannot edit) -->
                     <div v-if="myBid" class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
                         <div class="flex items-start gap-3">
-                            <div class="text-2xl">🔒</div>
+                            <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <LockClosedIcon class="w-5 h-5" aria-hidden="true" />
+                            </div>
                             <div class="flex-1 min-w-0">
                                 <div class="font-semibold text-emerald-900">Your bid is locked</div>
                                 <div class="text-sm text-emerald-800 mt-0.5">
@@ -358,7 +381,10 @@ const eligibleMembers = computed(() =>
                             <input v-model.number="bidForm.amount" type="number" min="1" :max="cycle.total_pool" class="form-input flex-1" placeholder="Bid amount in ₹" />
                             <button @click="placeBid" :disabled="loading" class="btn-primary">{{ loading ? 'Submitting…' : 'Place bid' }}</button>
                         </div>
-                        <p class="text-xs text-amber-700 mt-2 font-medium">⚠ Once placed, your bid is final — it cannot be edited or withdrawn.</p>
+                        <p class="text-xs text-amber-700 mt-2 font-medium inline-flex items-center gap-1.5">
+                            <ExclamationTriangleIcon class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            Once placed, your bid is final — it cannot be edited or withdrawn.
+                        </p>
                         <p class="text-xs text-gray-500 mt-1">Lowest bid wins (or admin picks multiple). Bids stay hidden from other members until the window closes.</p>
                     </div>
 
@@ -380,13 +406,16 @@ const eligibleMembers = computed(() =>
                         <ul v-else class="divide-y divide-gray-100">
                             <li v-for="t in tenderStore.tenders" :key="t.id" class="py-3 flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-3 min-w-0">
-                                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                                    <div class="w-8 h-8 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
                                         {{ t.user?.name?.split(' ').map(p => p[0]).slice(0,2).join('') || '?' }}
                                     </div>
                                     <div class="min-w-0">
                                         <div class="font-medium truncate flex items-center gap-1.5">
                                             {{ t.user?.name || (t.user_id === auth.user?.id ? 'You' : '—') }}
-                                            <span v-if="t.is_winning_bid" class="badge-success">🏆 Winner</span>
+                                            <span v-if="t.is_winning_bid" class="badge-success">
+                                                <TrophyIcon class="w-3 h-3" aria-hidden="true" />
+                                                Winner
+                                            </span>
                                             <span v-else-if="t.user_id === auth.user?.id" class="badge-info">You</span>
                                         </div>
                                         <div v-if="t.placed_at" class="text-[11px] text-gray-500">Placed {{ formatDateTime(t.placed_at) }}</div>
@@ -415,7 +444,7 @@ const eligibleMembers = computed(() =>
                             <div class="text-[11px] text-amber-700 mt-2">Pay the admin directly. They'll mark your contribution as received — you don't need to do anything on this screen.</div>
                         </div>
                         <div v-else-if="myContribution?.is_paid" class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-2">
-                            <span>✓</span>
+                            <CheckCircleIcon class="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
                             <span>
                                 Your contribution of {{ formatINR(myContribution.amount) }} was recorded
                                 <span v-if="myContribution.paid_at">on {{ formatDate(myContribution.paid_at) }}</span>
@@ -471,17 +500,22 @@ const eligibleMembers = computed(() =>
 
             <div class="space-y-5">
                 <!-- Winner card -->
-                <div class="surface-padded" :class="cycle.selection_method === 'organizer_payout' ? 'bg-indigo-50 border-indigo-200' : ''">
+                <div class="surface-padded" :class="cycle.selection_method === 'organizer_payout' ? 'bg-brand-50 border-brand-200' : ''">
                     <h3 class="font-semibold mb-3">
-                        <span v-if="cycle.selection_method === 'organizer_payout'" class="text-indigo-900">👑 Organizer Payout</span>
+                        <span v-if="cycle.selection_method === 'organizer_payout'" class="text-brand-900 inline-flex items-center gap-1.5">
+                            <ShieldCheckIcon class="w-4 h-4" aria-hidden="true" />
+                            Organizer Payout
+                        </span>
                         <span v-else>{{ cycle.winners_count > 1 ? `Winners (${cycle.winners_count})` : 'Winner' }}</span>
                     </h3>
 
                     <!-- Organizer cycle (always cycle #1) — admin receives the full pool -->
                     <div v-if="cycle.selection_method === 'organizer_payout'" class="text-center py-3">
-                        <div class="text-5xl mb-2">👑</div>
-                        <div class="font-bold text-lg text-indigo-900">{{ cycle.winner?.name || 'Admin' }}</div>
-                        <div class="text-xs text-indigo-700">Cycle #1 · Organizer payout (cannot be changed)</div>
+                        <div class="w-16 h-16 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center mx-auto mb-3">
+                            <ShieldCheckIcon class="w-9 h-9" aria-hidden="true" />
+                        </div>
+                        <div class="font-bold text-lg text-brand-900">{{ cycle.winner?.name || 'Admin' }}</div>
+                        <div class="text-xs text-brand-700">Cycle #1 · Organizer payout (cannot be changed)</div>
                         <div class="mt-3 text-xs text-gray-500">Payout</div>
                         <div class="text-2xl font-bold">{{ formatINR(cycle.payout_amount) }}</div>
                         <p class="text-[11px] text-gray-500 mt-2">As per platform rule, the very first cycle of every WISHI goes to the admin. Members contribute but no one bids for cycle #1.</p>
@@ -492,7 +526,7 @@ const eligibleMembers = computed(() =>
                         <ul class="divide-y divide-gray-100">
                             <li v-for="t in tenderStore.tenders.filter((t) => t.is_winning_bid)" :key="t.id" class="py-2 flex items-center justify-between gap-2">
                                 <div class="flex items-center gap-2 min-w-0">
-                                    <span class="text-amber-500">🏆</span>
+                                    <TrophyIcon class="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
                                     <span class="font-medium truncate">{{ t.user?.name || (t.user_id === auth.user?.id ? 'You' : '—') }}</span>
                                 </div>
                                 <div class="font-bold text-sm shrink-0">{{ formatINR(t.bid_amount) }}</div>
@@ -502,14 +536,20 @@ const eligibleMembers = computed(() =>
                             <div class="flex justify-between"><span class="text-gray-500">Pool</span><span>{{ formatINR(cycle.total_pool) }}</span></div>
                             <div class="flex justify-between"><span class="text-gray-500">Total payout</span><strong>{{ formatINR(cycle.payout_amount) }}</strong></div>
                             <div v-if="cycle.admin_topup_amount > 0" class="flex justify-between text-amber-700">
-                                <span>💰 Admin top-up</span><strong>+{{ formatINR(cycle.admin_topup_amount) }}</strong>
+                                <span class="inline-flex items-center gap-1.5">
+                                    <BanknotesIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                                    Admin top-up
+                                </span>
+                                <strong>+{{ formatINR(cycle.admin_topup_amount) }}</strong>
                             </div>
                         </div>
                     </div>
 
                     <!-- Single winner display -->
                     <div v-else-if="cycle.winner" class="text-center py-3">
-                        <div class="text-5xl mb-2">🏆</div>
+                        <div class="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3">
+                            <TrophyIcon class="w-9 h-9" aria-hidden="true" />
+                        </div>
                         <div class="font-bold text-lg">{{ cycle.winner.name }}</div>
                         <div class="text-sm text-gray-500">via {{ cycle.selection_method?.replace('_', ' ') }}</div>
                         <div class="mt-3 text-xs text-gray-500">Payout</div>
@@ -532,8 +572,11 @@ const eligibleMembers = computed(() =>
                                 Select multiple winners →
                             </button>
                         </template>
-                        <div v-else class="p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm">
-                            <div class="font-semibold">⏳ Winner announcement locked</div>
+                        <div v-else class="p-3 rounded-lg bg-brand-50 border border-brand-200 text-brand-800 text-sm">
+                            <div class="font-semibold inline-flex items-center gap-1.5">
+                                <ClockIcon class="w-4 h-4" aria-hidden="true" />
+                                Winner announcement locked
+                            </div>
                             <div class="text-xs mt-1">
                                 This button will open on <strong>{{ formatDateTime(cycle.contribution_due_at) }}</strong>
                                 ({{ daysTillMature }} day{{ daysTillMature !== 1 ? 's' : '' }} left).
@@ -549,8 +592,14 @@ const eligibleMembers = computed(() =>
                 <!-- Deferred amount (tender mode) -->
                 <div v-if="cycle.mode === 'tender' && cycle.deferred_amount > 0" class="surface-padded" :class="cycle.deferred_released_at ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'">
                     <h3 class="font-semibold mb-2">
-                        <span v-if="cycle.deferred_released_at" class="text-emerald-900">✓ Deferred released</span>
-                        <span v-else class="text-amber-900">🔒 Deferred to winner</span>
+                        <span v-if="cycle.deferred_released_at" class="text-emerald-900 inline-flex items-center gap-1.5">
+                            <CheckCircleIcon class="w-4 h-4" aria-hidden="true" />
+                            Deferred released
+                        </span>
+                        <span v-else class="text-amber-900 inline-flex items-center gap-1.5">
+                            <LockClosedIcon class="w-4 h-4" aria-hidden="true" />
+                            Deferred to winner
+                        </span>
                     </h3>
                     <div class="text-2xl font-bold" :class="cycle.deferred_released_at ? 'text-emerald-700' : 'text-amber-700'">{{ formatINR(cycle.deferred_amount) }}</div>
                     <p v-if="cycle.deferred_released_at" class="text-xs text-emerald-800 mt-1">
@@ -577,7 +626,10 @@ const eligibleMembers = computed(() =>
                     <button @click="showPayoutModal = true" class="btn-primary w-full">Record payout</button>
                 </div>
                 <div v-else-if="cycle.paid_out_at" class="surface-padded bg-emerald-50 border-emerald-200">
-                    <div class="text-sm text-emerald-800">✓ Payout completed on {{ formatDate(cycle.paid_out_at) }}</div>
+                    <div class="text-sm text-emerald-800 inline-flex items-center gap-1.5">
+                        <CheckCircleIcon class="w-4 h-4 text-emerald-600" aria-hidden="true" />
+                        Payout completed on {{ formatDate(cycle.paid_out_at) }}
+                    </div>
                 </div>
             </div>
         </div>
@@ -667,9 +719,24 @@ const eligibleMembers = computed(() =>
                         <div class="flex justify-between"><dt class="text-gray-600">Selected bids</dt><dd class="font-semibold">{{ selectedBidIds.size }}</dd></div>
                         <div class="flex justify-between"><dt class="text-gray-600">Total of selected</dt><dd class="font-bold">{{ formatINR(selectedTotal) }}</dd></div>
                         <div class="flex justify-between"><dt class="text-gray-600">Pool</dt><dd>{{ formatINR(cycle.total_pool) }}</dd></div>
-                        <div v-if="topupRequired > 0" class="flex justify-between text-amber-800 pt-1 border-t border-amber-200"><dt class="font-semibold">💰 Admin top-up (your pocket)</dt><dd class="font-bold">{{ formatINR(topupRequired) }}</dd></div>
-                        <div v-else-if="surplusPending > 0" class="flex justify-between text-sky-800 pt-1 border-t border-sky-200"><dt class="font-semibold">🔒 Deferred to winners</dt><dd class="font-bold">{{ formatINR(surplusPending) }}</dd></div>
-                        <div v-else class="text-emerald-800 pt-1 border-t border-emerald-200 text-center font-medium">✓ Exact match · no top-up, no deferred</div>
+                        <div v-if="topupRequired > 0" class="flex justify-between text-amber-800 pt-1 border-t border-amber-200">
+                            <dt class="font-semibold inline-flex items-center gap-1.5">
+                                <BanknotesIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                                Admin top-up (your pocket)
+                            </dt>
+                            <dd class="font-bold">{{ formatINR(topupRequired) }}</dd>
+                        </div>
+                        <div v-else-if="surplusPending > 0" class="flex justify-between text-sky-800 pt-1 border-t border-sky-200">
+                            <dt class="font-semibold inline-flex items-center gap-1.5">
+                                <LockClosedIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                                Deferred to winners
+                            </dt>
+                            <dd class="font-bold">{{ formatINR(surplusPending) }}</dd>
+                        </div>
+                        <div v-else class="text-emerald-800 pt-1 border-t border-emerald-200 text-center font-medium inline-flex items-center justify-center gap-1.5 w-full">
+                            <CheckCircleIcon class="w-4 h-4" aria-hidden="true" />
+                            Exact match · no top-up, no deferred
+                        </div>
                     </dl>
                 </div>
 

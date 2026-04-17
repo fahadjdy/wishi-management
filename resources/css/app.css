@@ -6,73 +6,165 @@
 @source '../**/*.js';
 @source '../**/*.vue';
 
+/*
+ * FHD Wishis — design tokens.
+ * Financial-trust palette: teal (primary) + slate (neutral) + violet (tender/bid accent).
+ * Legacy `indigo-*` utility tokens are intentionally remapped to the new teal scale so
+ * screens that haven't been refactored yet still render in the new brand color.
+ */
 @theme {
     --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* ---- Brand scale (new canonical name) ---- */
+    --color-brand-50:  #f0fdfa;
+    --color-brand-100: #ccfbf1;
+    --color-brand-200: #99f6e4;
+    --color-brand-300: #5eead4;
+    --color-brand-400: #2dd4bf;
+    --color-brand-500: #14b8a6;
+    --color-brand-600: #0d9488;
+    --color-brand-700: #0f766e;
+    --color-brand-800: #115e59;
+    --color-brand-900: #134e4a;
+    --color-brand-950: #042f2e;
+
+    /* ---- Indigo remapped to brand teal (cascades legacy code without edits) ---- */
+    --color-indigo-50:  #f0fdfa;
+    --color-indigo-100: #ccfbf1;
+    --color-indigo-200: #99f6e4;
+    --color-indigo-300: #5eead4;
+    --color-indigo-400: #2dd4bf;
+    --color-indigo-500: #14b8a6;
+    --color-indigo-600: #0d9488;
+    --color-indigo-700: #0f766e;
+    --color-indigo-800: #115e59;
+    --color-indigo-900: #134e4a;
+
+    /* ---- Accent — violet (kept distinct for tender/bid cues) ---- */
+    --color-accent-50:  #f5f3ff;
+    --color-accent-100: #ede9fe;
+    --color-accent-200: #ddd6fe;
+    --color-accent-500: #8b5cf6;
+    --color-accent-600: #7c3aed;
+    --color-accent-700: #6d28d9;
 }
 
-html, body {
-    height: 100%;
-}
+html, body { height: 100%; }
 
 body {
-    background-color: #f4f6fb;
-    color: #1f2a44;
+    background-color: #f8fafc;      /* slate-50 — calmer shell */
+    color: #0f172a;                  /* slate-900 for strong text */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
-#app {
-    min-height: 100vh;
-}
+#app { min-height: 100vh; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+:focus { outline: none; }
 
 @layer components {
+    /* ---------- Surfaces ---------- */
     .surface {
-        @apply bg-white rounded-2xl shadow-sm border border-gray-200/70;
+        @apply bg-white rounded-2xl shadow-sm border border-slate-200/80;
     }
     .surface-padded {
-        @apply bg-white rounded-2xl shadow-sm border border-gray-200/70 p-5 md:p-6;
+        @apply bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 md:p-6;
+    }
+    .surface-hover {
+        @apply transition hover:shadow-md hover:border-brand-300;
     }
 
+    /* ---------- Buttons ---------- */
     .btn {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
     }
     .btn-primary {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+               bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700 active:bg-brand-800 focus-visible:ring-brand-500;
     }
     .btn-secondary {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 focus:ring-gray-300;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+               bg-white text-slate-800 border border-slate-300 hover:bg-slate-50 hover:border-slate-400 focus-visible:ring-slate-400;
     }
     .btn-danger {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+               bg-rose-600 text-white shadow-sm shadow-rose-600/20 hover:bg-rose-700 focus-visible:ring-rose-500;
     }
     .btn-success {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+               bg-green-600 text-white shadow-sm shadow-green-600/20 hover:bg-green-700 focus-visible:ring-green-500;
     }
     .btn-ghost {
-        @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 hover:bg-gray-100 focus:ring-gray-200;
+        @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg px-4 py-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+               text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-300;
     }
-    .btn-sm {
-        @apply px-3 py-1.5 text-xs;
-    }
+    .btn-sm { @apply px-3 py-1.5 text-xs; }
+    .btn-lg { @apply px-5 py-3 text-base; }
+    .btn-block { @apply w-full; }
 
-    .form-label { @apply block text-sm font-medium text-gray-700 mb-1.5; }
+    /* ---------- Forms ---------- */
+    .form-label { @apply block text-sm font-medium text-slate-700 mb-1.5; }
     .form-input {
-        @apply w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30;
+        @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition
+               focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15;
     }
-    .form-error { @apply mt-1 text-xs text-red-600; }
+    .form-input-sm { @apply px-3 py-1.5 text-xs; }
+    .form-error { @apply mt-1 text-xs text-rose-600; }
+    .form-hint  { @apply mt-1 text-xs text-slate-500; }
 
-    .badge-gray { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700; }
-    .badge-success { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-emerald-100 text-emerald-700; }
-    .badge-warning { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-100 text-amber-700; }
-    .badge-danger { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700; }
-    .badge-info { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-100 text-sky-700; }
-    .badge-brand { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-indigo-100 text-indigo-700; }
+    /* ---------- Badges ---------- */
+    .badge-gray    { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-slate-100  text-slate-700; }
+    .badge-success { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-green-100  text-green-800; }
+    .badge-warning { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-100  text-amber-800; }
+    .badge-danger  { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-rose-100   text-rose-800; }
+    .badge-info    { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-100    text-sky-800; }
+    .badge-brand   { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-brand-100  text-brand-800; }
+    .badge-accent  { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-accent-100 text-accent-700; }
+    .badge-outline { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 text-slate-700; }
 
-    .stat-bar { @apply h-1 w-12 rounded-full mb-3; }
+    /* ---------- Chips (interactive pill) ---------- */
+    .chip         { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer select-none; }
+    .chip-default { @apply bg-white text-slate-700 border-slate-300 hover:border-brand-400; }
+    .chip-active  { @apply bg-brand-600 text-white border-brand-600; }
+
+    /* ---------- Misc ---------- */
+    .stat-bar    { @apply h-1 w-12 rounded-full mb-3; }
+    .skeleton    { @apply animate-pulse bg-slate-200 rounded; }
+    .kbd         { @apply inline-flex items-center px-1.5 h-5 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded; }
+
+    /* Focus ring utility for clickable cards */
+    .focus-ring  { @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 rounded-2xl; }
 }
+
+/* ---------- Animations ---------- */
+@keyframes slide-up-fade {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up-fade 200ms ease-out; }
+
+@keyframes pop-in {
+    0%   { opacity: 0; transform: scale(0.96); }
+    100% { opacity: 1; transform: scale(1); }
+}
+.animate-pop-in { animation: pop-in 180ms ease-out; }
+
+@keyframes shimmer {
+    0%   { background-position: -468px 0; }
+    100% { background-position: 468px 0; }
+}
+.shimmer {
+    background: linear-gradient(to right, #f1f5f9 8%, #e2e8f0 18%, #f1f5f9 33%);
+    background-size: 800px 100px;
+    animation: shimmer 1.4s linear infinite;
+}
+
+/* amCharts tooltip polish (global) */
+.am5-tooltip-content { font-family: var(--font-sans) !important; font-size: 12px !important; }

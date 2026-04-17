@@ -19,16 +19,35 @@ class MembershipService
         $this->guardEligibility($wishi, $user);
 
         return DB::transaction(function () use ($wishi, $user) {
-            $existing = WishiMember::where('wishi_id', $wishi->id)
+            // `wishi_members` carries a UNIQUE(wishi_id, user_id) index that spans
+            // soft-deleted rows too, so a user who left+rejoins must reuse their
+            // existing row — creating a fresh one would trigger a duplicate-key
+            // error. `withTrashed()` is required to see previously-left rows.
+            $existing = WishiMember::withTrashed()
+                ->where('wishi_id', $wishi->id)
                 ->where('user_id', $user->id)
                 ->first();
-            if ($existing && in_array($existing->status, ['pending', 'approved', 'active'])) {
+            if ($existing && ! $existing->trashed() && in_array($existing->status, ['pending', 'approved', 'active'])) {
                 throw new \DomainException('You are already a member or have a pending request.');
+            }
+
+            // Rejoin path: restore the soft-deleted row and reset per-membership
+            // state (token, win history, admin-invite flag) so it behaves like a
+            // fresh join. Status / joined_at are (re)set just below.
+            if ($existing && $existing->trashed()) {
+                $existing->restore();
             }
 
             $status = $wishi->require_approval ? 'pending' : 'approved';
             $member = $existing
-                ? tap($existing)->update(['status' => $status, 'joined_at' => $status === 'approved' ? now() : null])
+                ? tap($existing)->update([
+                    'status' => $status,
+                    'joined_at' => $status === 'approved' ? now() : null,
+                    'token_no' => null,
+                    'has_won' => false,
+                    'won_in_cycle' => null,
+                    'invited_by_admin' => false,
+                ])
                 : WishiMember::create([
                     'wishi_id' => $wishi->id,
                     'user_id' => $user->id,
@@ -122,15 +141,30 @@ class MembershipService
         }
 
         return DB::transaction(function () use ($wishi, $user, $actor) {
-            $existing = WishiMember::where('wishi_id', $wishi->id)
+            // Same unique-index gotcha as requestJoin() — include trashed rows
+            // so a previously-removed user can be re-invited without duplicate-
+            // key errors.
+            $existing = WishiMember::withTrashed()
+                ->where('wishi_id', $wishi->id)
                 ->where('user_id', $user->id)
                 ->first();
-            if ($existing && in_array($existing->status, ['pending', 'approved', 'active'], true)) {
+            if ($existing && ! $existing->trashed() && in_array($existing->status, ['pending', 'approved', 'active'], true)) {
                 throw new \DomainException('User is already a member or has a pending request/invite.');
             }
 
+            if ($existing && $existing->trashed()) {
+                $existing->restore();
+            }
+
             $row = $existing
-                ? tap($existing)->update(['status' => 'pending', 'invited_by_admin' => true, 'joined_at' => null])
+                ? tap($existing)->update([
+                    'status' => 'pending',
+                    'invited_by_admin' => true,
+                    'joined_at' => null,
+                    'token_no' => null,
+                    'has_won' => false,
+                    'won_in_cycle' => null,
+                ])
                 : WishiMember::create([
                     'wishi_id' => $wishi->id,
                     'user_id' => $user->id,
@@ -254,6 +288,12 @@ class MembershipService
      * Assign the next sequential token_no (1..n) for an approved member.
      * No-op if the member already has a token. Locks the wishi row to
      * serialize concurrent approvals so tokens stay dense and unique.
+     *
+     * `withTrashed()` is essential: the `wishi_members_wishi_token_unique`
+     * index on (wishi_id, token_no) spans soft-deleted rows too, so if a past
+     * member who left still has their token_no set on a trashed row, a fresh
+     * `max()` over active rows alone can hand out a colliding number. Reading
+     * max across trashed rows guarantees we always pick a genuinely free slot.
      */
     protected function assignTokenIfMissing(WishiMember $member): void
     {
@@ -264,7 +304,9 @@ class MembershipService
             Wishi::whereKey($member->wishi_id)->lockForUpdate()->first();
             // Token #1 is reserved for the admin/organizer (cycle-#1 payout).
             // Real members therefore start at token #2 and count upward.
-            $max = (int) WishiMember::where('wishi_id', $member->wishi_id)->max('token_no');
+            $max = (int) WishiMember::withTrashed()
+                ->where('wishi_id', $member->wishi_id)
+                ->max('token_no');
             $next = $max < 2 ? 2 : $max + 1;
             $member->update(['token_no' => $next]);
         });
