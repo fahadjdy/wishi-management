@@ -83,7 +83,7 @@ async function restore(u) {
 <template>
     <div class="space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <h1 class="text-2xl font-bold">Member Management</h1>
+            <h1 class="display text-4xl text-slate-900">Member <span class="italic text-brand-600">management</span>.</h1>
             <button @click="openCreate" class="btn-primary btn-sm">
                 <PlusIcon class="w-4 h-4" aria-hidden="true" />
                 Add member

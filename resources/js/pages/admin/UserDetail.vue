@@ -295,7 +295,7 @@ const initials = computed(() => (user.value?.name || '').split(' ').map(p => p[0
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <h1 class="text-xl sm:text-2xl font-bold text-gray-900 truncate">{{ user.name }}</h1>
+                            <h1 class="display text-2xl sm:text-3xl text-slate-900 truncate">{{ user.name }}</h1>
                             <span v-if="user.is_admin" class="badge-brand">Admin</span>
                             <span v-if="user.deleted_at" class="badge-danger">Deleted</span>
                             <span v-else-if="user.is_locked" class="badge-warning">Locked</span>

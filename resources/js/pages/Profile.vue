@@ -159,7 +159,7 @@ async function saveContact() {
                     <!-- Name + email + admin badge -->
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <h1 class="text-xl sm:text-2xl font-bold text-gray-900 truncate">{{ auth.user?.name || '—' }}</h1>
+                            <h1 class="display text-2xl sm:text-3xl text-slate-900 truncate">{{ auth.user?.name || '—' }}</h1>
                             <span v-if="auth.user?.is_admin" class="badge-brand">Admin</span>
                             <span :class="trustColor[credit.trustLevel]" class="capitalize">{{ credit.trustLevel || '—' }}</span>
                         </div>

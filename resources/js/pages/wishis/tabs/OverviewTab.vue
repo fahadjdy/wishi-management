@@ -91,23 +91,62 @@ function dueColor(days) {
 <template>
     <div v-if="wishi" class="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div class="lg:col-span-2 space-y-5">
-            <!-- Current cycle card -->
-            <div class="surface-padded">
-                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-                    <h3 class="font-semibold">Current cycle</h3>
-                    <button v-if="isAdmin && wishi.status === 'active' && currentCycle?.status === 'completed' && wishi.current_cycle < wishi.duration_months" @click="advance" class="btn-primary btn-sm">
+            <!-- Current cycle — terracotta paper-tex hero -->
+            <div class="surface paper-tex p-6 sm:p-7 relative overflow-hidden"
+                 :class="!currentCycle && 'opacity-80'"
+                 style="background: linear-gradient(150deg, #FAF5EC 0%, #FBEEE6 100%);">
+                <div v-if="!currentCycle" class="text-sm text-slate-500 py-4 text-center">No active cycle yet.</div>
+                <div v-else class="flex items-start justify-between gap-4 flex-wrap">
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[10px] uppercase tracking-widest text-slate-500">Current cycle · #{{ currentCycle.cycle_number }} of {{ wishi.duration_months }}</div>
+                        <h3 class="display text-3xl text-slate-900 mt-1">
+                            <span v-if="currentCycle.due_date">Due {{ formatDate(currentCycle.due_date) }}</span>
+                            <span v-else class="italic">{{ cycleStatusLabels[currentCycle.status] }}</span>
+                        </h3>
+                        <div class="text-sm text-slate-700 mt-1.5 flex flex-wrap items-center gap-x-2">
+                            <span class="capitalize">{{ currentCycle.mode }}</span>
+                            <span class="text-slate-400">·</span>
+                            <span class="display text-base text-slate-900">{{ formatINR(wishi.monthly_contribution) }}</span>
+                            <span class="text-slate-500 text-xs">per member · pool</span>
+                            <span class="display text-base text-brand-600">{{ formatINR(currentCycle.total_pool ?? wishi.total_pool) }}</span>
+                        </div>
+                    </div>
+                    <div v-if="currentCycle.due_date && daysUntil(currentCycle.due_date) !== null" class="text-center shrink-0">
+                        <div class="display text-5xl leading-none" :class="daysUntil(currentCycle.due_date) < 0 ? 'text-rose-600' : 'text-brand-600'">
+                            {{ daysUntil(currentCycle.due_date) >= 0 ? daysUntil(currentCycle.due_date) : Math.abs(daysUntil(currentCycle.due_date)) }}d
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-1">{{ daysUntil(currentCycle.due_date) < 0 ? 'overdue' : 'until due' }}</div>
+                    </div>
+                </div>
+                <div v-if="currentCycle" class="mt-5 flex gap-2 relative">
+                    <RouterLink :to="`/wishis/${wishi.uuid}/cycles/${currentCycle.id}`" class="btn-primary btn-sm">Open cycle</RouterLink>
+                    <button v-if="isAdmin && wishi.status === 'active' && currentCycle.status === 'completed' && wishi.current_cycle < wishi.duration_months" @click="advance" class="btn-secondary btn-sm">
                         Open next cycle
                     </button>
                 </div>
-                <div v-if="!currentCycle" class="text-sm text-gray-500 py-4 text-center">No active cycle yet.</div>
-                <div v-else>
-                    <div class="flex items-center gap-2 mb-3 flex-wrap">
-                        <span class="text-2xl font-bold">#{{ currentCycle.cycle_number }}</span>
-                        <span class="badge-info capitalize">{{ cycleStatusLabels[currentCycle.status] }}</span>
-                        <span class="badge-gray capitalize">{{ currentCycle.mode }}</span>
-                    </div>
-                    <RouterLink :to="`/wishis/${wishi.uuid}/cycles/${currentCycle.id}`" class="btn-secondary btn-sm">Open cycle detail →</RouterLink>
+            </div>
+
+            <!-- Cycle segment progress strip (design's signature visual) -->
+            <div v-if="wishi.duration_months" class="surface-padded">
+                <div class="flex items-baseline justify-between mb-3 gap-2">
+                    <h3 class="section-title" style="font-size: 18px;">Cycle progress</h3>
+                    <span class="text-xs text-slate-500">{{ wishi.cycles_completed ?? 0 }} of {{ wishi.duration_months }} paid out</span>
                 </div>
+                <div class="flex gap-1">
+                    <div v-for="i in wishi.duration_months" :key="i"
+                         class="flex-1 h-6 rounded-sm relative flex items-center justify-center text-[10px] font-medium"
+                         :style="{
+                             background: i <= (wishi.cycles_completed ?? 0)
+                                 ? '#2D6B57'
+                                 : i === (wishi.current_cycle ?? 0)
+                                     ? '#C25A36'
+                                     : '#F2EADB',
+                             color: i <= (wishi.cycles_completed ?? 0) || i === (wishi.current_cycle ?? 0) ? '#fff' : '#7A6E60'
+                         }">
+                        {{ i }}
+                    </div>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-2">Cycle #1 is the organizer payout — paid to the admin.</div>
             </div>
 
             <!-- MEMBER: read-only own-contribution info, no buttons -->
@@ -149,7 +188,7 @@ function dueColor(days) {
 
             <!-- Cycle history -->
             <div class="surface-padded">
-                <h3 class="font-semibold mb-4">Cycle history &amp; winners</h3>
+                <h3 class="section-title mb-4" style="font-size: 18px;">Cycle history &amp; winners</h3>
                 <div v-if="!cycles.length" class="text-sm text-gray-400 py-6 text-center">No cycles yet.</div>
                 <div v-else class="space-y-2.5">
                     <RouterLink v-for="c in cycles" :key="c.id" :to="`/wishis/${wishi.uuid}/cycles/${c.id}`"
@@ -284,7 +323,7 @@ function dueColor(days) {
 
         <div class="space-y-5">
             <div class="surface-padded">
-                <h3 class="font-semibold mb-3">Quick info</h3>
+                <h3 class="section-title mb-3" style="font-size: 18px;">Quick info</h3>
                 <dl class="text-sm space-y-2">
                     <div class="flex justify-between"><dt class="text-gray-500">Admin</dt><dd class="font-medium">{{ wishi.creator?.name || '—' }}</dd></div>
                     <div class="flex justify-between"><dt class="text-gray-500">Members</dt><dd class="font-medium">{{ wishi.total_joined ?? ((wishi.active_members_count ?? 0) + 1) }} / {{ wishi.total_members }}</dd></div>

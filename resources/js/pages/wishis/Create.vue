@@ -157,7 +157,7 @@ async function submit() {
 <template>
     <div class="max-w-3xl mx-auto">
         <div class="mb-6">
-            <h1 class="text-2xl font-bold text-slate-900">Create a new WISHI</h1>
+            <h1 class="display text-4xl text-slate-900">Create a new <span class="italic text-brand-600">WISHI</span>.</h1>
             <p class="text-sm text-slate-500 mt-1">Three quick steps — you can edit most settings later.</p>
         </div>
 
@@ -235,10 +235,12 @@ async function submit() {
                         </div>
                     </div>
 
-                    <div class="rounded-xl bg-brand-50 border border-brand-200 p-4">
-                        <div class="text-[11px] uppercase tracking-wide text-brand-700 font-semibold">Pool per cycle</div>
-                        <div class="text-3xl font-bold text-brand-900 mt-1">{{ formatINR(totalPool) }}</div>
-                        <p class="text-xs text-brand-800 mt-1.5">
+                    <div class="rounded-2xl border border-brand-200 p-5 paper-tex relative overflow-hidden"
+                         style="background: linear-gradient(140deg, #FBEEE6 0%, #F5DDD0 100%);">
+                        <div class="absolute -top-8 -right-6 w-32 h-32 rounded-full bg-brand-300/20 pointer-events-none"></div>
+                        <div class="text-[11px] uppercase tracking-widest text-brand-700 font-medium relative">Pool per cycle</div>
+                        <div class="display text-4xl text-slate-900 mt-1 relative">{{ formatINR(totalPool) }}</div>
+                        <p class="text-xs text-slate-700 mt-2 relative">
                             {{ form.total_members }} members × {{ formatINR(form.monthly_contribution) }} contribution, over {{ form.total_members }} cycles.
                             Cycle #1 pool is your <strong>organizer payout</strong> — you still contribute every cycle.
                         </p>

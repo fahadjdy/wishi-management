@@ -18,23 +18,25 @@ useBreadcrumbs(() => [{ label: 'Notifications' }]);
 
 onMounted(() => store.fetch());
 
-// Each notification kind maps to a Heroicon + a tone (bg/fg pair). Tone carries
-// meaning: money-related = brand teal, wins = amber, alerts = amber, member
-// events = slate, system/info = brand. Keeps the list scannable without emoji.
+// Each notification kind maps to a Heroicon + a warm tone (bg/fg pair). All
+// icon tiles use the cream-2/sand neutral background — meaning is conveyed by
+// the icon shape, not loud colour. Design language: muted icon tiles, warm
+// terracotta wash on unread rows.
+const ICON_TILE = 'bg-slate-100 text-slate-700';
 const kindIcon = {
-    payment_reminder:  { icon: CurrencyRupeeIcon,  tone: 'bg-amber-50 text-amber-700'       },
-    payment_approved:  { icon: CheckCircleIcon,    tone: 'bg-emerald-50 text-emerald-700'   },
-    winner_announced:  { icon: TrophyIcon,         tone: 'bg-amber-50 text-amber-700'       },
-    tender_window:     { icon: ClockIcon,          tone: 'bg-accent-50 text-accent-700'     },
-    member_status:     { icon: UserGroupIcon,      tone: 'bg-slate-100 text-slate-700'      },
-    member_joined:     { icon: UserPlusIcon,       tone: 'bg-emerald-50 text-emerald-700'   },
-    wishi_created:     { icon: SparklesIcon,       tone: 'bg-brand-50 text-brand-700'       },
-    wishi_started:     { icon: RocketLaunchIcon,   tone: 'bg-brand-50 text-brand-700'       },
-    wishi_full:        { icon: CheckBadgeIcon,     tone: 'bg-brand-50 text-brand-700'       },
+    payment_reminder:  { icon: CurrencyRupeeIcon,  tone: 'bg-amber-50 text-amber-700' },
+    payment_approved:  { icon: CheckCircleIcon,    tone: 'bg-green-50 text-green-700' },
+    winner_announced:  { icon: TrophyIcon,         tone: 'bg-amber-50 text-amber-700' },
+    tender_window:     { icon: ClockIcon,          tone: 'bg-accent-50 text-accent-700' },
+    member_status:     { icon: UserGroupIcon,      tone: ICON_TILE },
+    member_joined:     { icon: UserPlusIcon,       tone: 'bg-green-50 text-green-700' },
+    wishi_created:     { icon: SparklesIcon,       tone: 'bg-brand-50 text-brand-700' },
+    wishi_started:     { icon: RocketLaunchIcon,   tone: 'bg-brand-50 text-brand-700' },
+    wishi_full:        { icon: CheckBadgeIcon,     tone: 'bg-brand-50 text-brand-700' },
 };
 
 function iconFor(n) {
-    return kindIcon[n.data?.kind] || { icon: BellIcon, tone: 'bg-slate-100 text-slate-600' };
+    return kindIcon[n.data?.kind] || { icon: BellIcon, tone: ICON_TILE };
 }
 
 function targetFor(n) {
@@ -61,7 +63,7 @@ const hasAny = computed(() => store.notifications.length > 0);
     <div class="space-y-5 max-w-3xl">
         <div class="flex items-center justify-between gap-3">
             <div>
-                <h1 class="text-2xl font-bold">Notifications</h1>
+                <h1 class="display text-4xl text-slate-900">Notifications<span class="text-brand-600">.</span></h1>
                 <p class="text-sm text-slate-500">
                     <span v-if="store.unreadCount > 0">{{ store.unreadCount }} unread</span>
                     <span v-else>You're all caught up.</span>
@@ -78,23 +80,26 @@ const hasAny = computed(() => store.notifications.length > 0);
             <div class="text-sm text-slate-500 mt-1">Payment reminders, winner announcements, and tender alerts will appear here.</div>
         </div>
 
-        <ul v-else class="space-y-2">
+        <ul v-else class="surface overflow-hidden divide-y" style="--tw-divide-opacity: 1; border-color: #E9DFCC;">
             <li v-for="n in store.notifications" :key="n.id"
-                class="surface p-4 flex items-start gap-3 cursor-pointer transition hover:border-brand-300 hover:shadow-sm"
-                :class="!n.read_at && 'border-brand-200 bg-brand-50/30'"
+                class="px-5 py-4 flex items-start gap-3.5 cursor-pointer transition"
+                :class="!n.read_at ? 'bg-brand-50/60 hover:bg-brand-50' : 'hover:bg-slate-50'"
+                style="border-bottom: 1px solid #E9DFCC;"
                 @click="openNotification(n)"
             >
-                <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0" :class="iconFor(n).tone">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" :class="iconFor(n).tone">
                     <component :is="iconFor(n).icon" class="w-5 h-5" aria-hidden="true" />
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
-                        <div class="font-semibold text-slate-900 truncate">{{ n.data?.title || n.type }}</div>
-                        <span v-if="!n.read_at" class="w-2 h-2 bg-brand-500 rounded-full shrink-0" aria-label="Unread"></span>
+                        <div class="text-sm truncate" :class="!n.read_at ? 'font-medium text-slate-900' : 'text-slate-700'">{{ n.data?.title || n.type }}</div>
+                        <span v-if="!n.read_at" class="w-1.5 h-1.5 bg-brand-500 rounded-full shrink-0" aria-label="Unread"></span>
+                        <div class="ml-auto text-xs text-slate-500 shrink-0">{{ relativeTime(n.created_at) }}</div>
                     </div>
-                    <p class="text-sm text-slate-600 mt-0.5 wrap-break-word">{{ n.data?.message }}</p>
-                    <div v-if="targetFor(n)" class="text-xs text-brand-700 font-medium mt-1.5">Tap to open →</div>
-                    <div class="text-xs text-slate-400 mt-1.5">{{ relativeTime(n.created_at) }} · {{ formatDateTime(n.created_at) }}</div>
+                    <p class="text-sm text-slate-600 mt-1 wrap-break-word leading-relaxed">{{ n.data?.message }}</p>
+                    <div v-if="targetFor(n)" class="text-xs text-brand-600 mt-2 inline-flex items-center gap-1">
+                        Open →
+                    </div>
                 </div>
             </li>
         </ul>

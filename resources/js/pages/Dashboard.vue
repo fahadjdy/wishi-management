@@ -15,8 +15,9 @@ import am5themes_Animated from '@amcharts/amcharts5/themes/Animated';
 import { useConfirm } from '@/composables/useConfirm';
 import {
     ExclamationTriangleIcon, ClockIcon, RocketLaunchIcon,
-    CheckCircleIcon, PlusIcon,
+    CheckCircleIcon, PlusIcon, EnvelopeIcon, ArrowRightIcon,
 } from '@heroicons/vue/24/outline';
+import Cover from '@/components/Cover.vue';
 
 const dash = useDashboardStore();
 const auth = useAuthStore();
@@ -39,6 +40,11 @@ onMounted(async () => {
 });
 
 const joinableWishis = computed(() => dash.data?.joinable_wishis || []);
+
+// Design: top-most joinable WISHI gets the terracotta hero treatment;
+// the rest render in a compact 2-col grid below.
+const heroJoinable = computed(() => joinableWishis.value[0] || null);
+const restJoinable = computed(() => joinableWishis.value.slice(1));
 
 async function requestJoin(uuid) {
     joiningUuid.value = uuid;
@@ -126,11 +132,27 @@ function openingLabel(days) {
 }
 
 function openingClass(days) {
-    if (days === null) return 'bg-slate-50 border-slate-200';
+    if (days === null) return 'bg-white border-slate-200';
     if (days < 0) return 'bg-rose-50 border-rose-200';
     if (days <= 1) return 'bg-amber-50 border-amber-200';
     return 'bg-brand-50 border-brand-200';
 }
+
+const todayLabel = computed(() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+});
+
+const firstName = computed(() => (auth.user?.name || '').split(' ')[0] || '');
+const greeting = computed(() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Namaste';
+    if (h < 17) return 'Hello';
+    return 'Good evening';
+});
+
+// Sum lifetime contribution (data already on dash store, fallback safe).
+const lifetimeContributed = computed(() => dash.data?.total_contributed || 0);
 
 function openingTextClass(days) {
     if (days === null) return 'text-slate-500';
@@ -270,12 +292,12 @@ async function renderCharts() {
     // Refs only exist after the admin <template> branch has rendered; guard so
     // member views (where these chart containers are absent) don't blow up.
     if (!d || !pieRoleEl.value) return;
-    // Brand-led palette: teal primary + amber/violet accent + emerald for money.
-    buildPie(pieRoleEl.value, d.users_by_role, 'role', 'count', [0x0d9488, 0x94a3b8]);
-    buildPie(pieTypeEl.value, d.wishis_by_type, 'cycle_type', 'count', [0x14b8a6, 0xf59e0b, 0x7c3aed]);
-    buildBar(barTrustEl.value, d.users_by_trust, 'trust_level', 'count', 0x0d9488);
-    buildLine(lineSignupsEl.value, d.signups_last_30_days, 'date', 'count', 0x0d9488);
-    buildLine(areaMoneyEl.value, d.contributions_last_30_days, 'date', 'amount', 0x10b981);
+    // Warm desi-modern palette: terracotta + deep green + mustard for visual variety.
+    buildPie(pieRoleEl.value, d.users_by_role, 'role', 'count', [0xC25A36, 0x7A6E60]);
+    buildPie(pieTypeEl.value, d.wishis_by_type, 'cycle_type', 'count', [0xC25A36, 0x2D6B57, 0xD49B3A]);
+    buildBar(barTrustEl.value, d.users_by_trust, 'trust_level', 'count', 0xC25A36);
+    buildLine(lineSignupsEl.value, d.signups_last_30_days, 'date', 'count', 0xC25A36);
+    buildLine(areaMoneyEl.value, d.contributions_last_30_days, 'date', 'amount', 0x2D6B57);
 }
 
 watch(() => adminStore.dashboard, () => {
@@ -287,20 +309,36 @@ onBeforeUnmount(dispose);
 
 <template>
     <div class="space-y-6">
-        <!-- Hero -->
-        <div class="bg-linear-to-br from-brand-700 via-brand-800 to-slate-900 rounded-2xl p-6 sm:p-7 text-white shadow-lg shadow-brand-700/20">
-            <div class="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <p class="text-brand-100 text-sm">Welcome back,</p>
-                    <h1 class="text-2xl sm:text-3xl font-bold mt-0.5">{{ auth.user?.name }}</h1>
-                    <p class="text-brand-50/90 text-sm mt-2">
-                        {{ isAdmin ? 'Platform overview — WISHIs, members and money at a glance.' : "Here's a snapshot of all your WISHIs and contributions." }}
-                    </p>
-                </div>
-                <RouterLink v-if="isAdmin" to="/wishis/create" class="bg-white text-brand-700 hover:bg-brand-50 font-semibold px-5 py-2.5 rounded-lg text-sm shadow-md inline-flex items-center gap-2">
+        <!-- Hero — warm greeting + trust chip (member) or quick-create (admin) -->
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="min-w-0">
+                <div class="text-xs text-slate-500">{{ todayLabel }}</div>
+                <h1 class="display text-3xl sm:text-4xl text-slate-900 mt-0.5">
+                    {{ greeting }},
+                    <span class="italic text-brand-600">{{ firstName }}</span><span class="text-brand-600">.</span>
+                </h1>
+                <p class="text-sm text-slate-500 mt-2">
+                    {{ isAdmin
+                        ? 'Platform overview — WISHIs, members and money at a glance.'
+                        : "Here's a calm snapshot of your WISHIs and contributions." }}
+                </p>
+            </div>
+
+            <div v-if="isAdmin" class="flex items-center gap-2">
+                <RouterLink to="/wishis/create" class="btn-primary">
                     <PlusIcon class="w-4 h-4" aria-hidden="true" />
                     Create new WISHI
                 </RouterLink>
+            </div>
+            <div v-else-if="dash.data" class="surface px-4 py-3 inline-flex items-center gap-4">
+                <div>
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500">Trust score</div>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span class="display text-3xl leading-none text-green-700">{{ dash.data.credit_score ?? '—' }}</span>
+                        <span class="text-[11px] text-slate-500">/100</span>
+                    </div>
+                </div>
+                <span v-if="dash.data?.trust_level" class="badge-success capitalize">{{ dash.data.trust_level }}</span>
             </div>
         </div>
 
@@ -386,12 +424,12 @@ onBeforeUnmount(dispose);
 
                 <!-- Overview tiles -->
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">Users</div><div class="text-2xl font-bold mt-1">{{ adminStore.dashboard.overview.total_users }}</div><div class="text-[11px] text-emerald-600">{{ adminStore.dashboard.overview.active_users }} active</div></div>
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">Admins</div><div class="text-2xl font-bold text-indigo-600 mt-1">{{ adminStore.dashboard.overview.total_admins }}</div><div class="text-[11px] text-amber-600">{{ adminStore.dashboard.overview.locked_users }} locked</div></div>
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">WISHIs</div><div class="text-2xl font-bold mt-1">{{ adminStore.dashboard.overview.active_wishis }} / {{ adminStore.dashboard.overview.total_wishis }}</div><div class="text-[11px] text-gray-500">active / total</div></div>
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">Pool value</div><div class="text-lg font-bold mt-1">{{ formatINR(adminStore.dashboard.overview.total_pool_value) }}</div><div class="text-[11px] text-gray-500">active pools</div></div>
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">Payouts</div><div class="text-lg font-bold mt-1 text-emerald-600">{{ formatINR(adminStore.dashboard.overview.total_payouts) }}</div><div class="text-[11px] text-gray-500">cumulative</div></div>
-                    <div class="surface-padded"><div class="text-[11px] uppercase tracking-wide text-gray-500">Open tenders</div><div class="text-2xl font-bold text-amber-600 mt-1">{{ adminStore.dashboard.overview.open_tenders }}</div><div class="text-[11px] text-red-600">{{ adminStore.dashboard.overview.missed_contributions }} missed</div></div>
+                    <div class="stat-tile"><div class="l">Users</div><div class="v mt-2">{{ adminStore.dashboard.overview.total_users }}</div><div class="text-[11px] text-green-700 mt-1">{{ adminStore.dashboard.overview.active_users }} active</div></div>
+                    <div class="stat-tile"><div class="l">Admins</div><div class="v mt-2" style="color:#A8472A;">{{ adminStore.dashboard.overview.total_admins }}</div><div class="text-[11px] text-amber-700 mt-1">{{ adminStore.dashboard.overview.locked_users }} locked</div></div>
+                    <div class="stat-tile"><div class="l">WISHIs</div><div class="v mt-2">{{ adminStore.dashboard.overview.active_wishis }} / {{ adminStore.dashboard.overview.total_wishis }}</div><div class="text-[11px] text-slate-500 mt-1">active / total</div></div>
+                    <div class="stat-tile"><div class="l">Pool value</div><div class="v mt-2" style="font-size: 24px;">{{ formatINR(adminStore.dashboard.overview.total_pool_value) }}</div><div class="text-[11px] text-slate-500 mt-1">active pools</div></div>
+                    <div class="stat-tile"><div class="l">Payouts</div><div class="v mt-2" style="font-size: 24px; color:#285F4D;">{{ formatINR(adminStore.dashboard.overview.total_payouts) }}</div><div class="text-[11px] text-slate-500 mt-1">cumulative</div></div>
+                    <div class="stat-tile"><div class="l">Open tenders</div><div class="v mt-2" style="color:#B07A2A;">{{ adminStore.dashboard.overview.open_tenders }}</div><div class="text-[11px] text-rose-600 mt-1">{{ adminStore.dashboard.overview.missed_contributions }} missed</div></div>
                 </div>
 
                 <!-- Charts row 1 -->
@@ -464,11 +502,11 @@ onBeforeUnmount(dispose);
             <!-- Late-payment warning (only when the member is actually behind) -->
             <div v-if="latePayments.length" class="surface-padded bg-rose-50 border-rose-200">
                 <div class="flex items-start gap-3">
-                    <div class="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                    <div class="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                         <ExclamationTriangleIcon class="w-6 h-6" aria-hidden="true" />
                     </div>
                     <div class="min-w-0 flex-1">
-                        <div class="text-xs uppercase tracking-wider font-semibold text-rose-700">
+                        <div class="text-xs uppercase tracking-widest font-medium text-rose-700">
                             {{ latePayments.length }} late payment{{ latePayments.length !== 1 ? 's' : '' }}
                         </div>
                         <p class="text-sm text-rose-800 mt-1">
@@ -490,15 +528,17 @@ onBeforeUnmount(dispose);
                 </div>
             </div>
 
-            <!-- Next month total (always visible when there are dues) — neutral, informational -->
-            <div v-if="upcomingPayments.length" class="surface-padded">
-                <div class="flex items-start justify-between gap-4 flex-wrap">
+            <!-- Next month total — terracotta paper-tex hero -->
+            <div v-if="upcomingPayments.length" class="surface-padded paper-tex relative overflow-hidden"
+                 style="background: linear-gradient(140deg, #FBEEE6 0%, #F5DDD0 100%); border-color: #EEBFA4;">
+                <div class="absolute -top-10 -right-8 w-44 h-44 rounded-full bg-brand-300/20 pointer-events-none"></div>
+                <div class="flex items-start justify-between gap-4 flex-wrap relative">
                     <div>
-                        <div class="text-xs uppercase tracking-wider font-semibold text-gray-500">Next month total</div>
-                        <div class="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{{ formatINR(nextMonthTotal) }}</div>
-                        <p class="text-xs text-gray-500 mt-1">Across {{ upcomingPaymentWishiCount }} WISHI{{ upcomingPaymentWishiCount !== 1 ? 's' : '' }} you're a member of.</p>
+                        <div class="text-[10px] uppercase tracking-widest text-brand-700/80">Next month total</div>
+                        <div class="display text-4xl sm:text-5xl text-slate-900 mt-1">{{ formatINR(nextMonthTotal) }}</div>
+                        <p class="text-xs text-slate-700 mt-2">Across {{ upcomingPaymentWishiCount }} WISHI{{ upcomingPaymentWishiCount !== 1 ? 's' : '' }} you're a member of.</p>
                     </div>
-                    <div class="text-right text-xs text-gray-500 italic max-w-xs">
+                    <div class="text-right text-xs text-slate-700 italic max-w-xs">
                         Pay the WISHI admin directly — cash, UPI or bank transfer. They'll mark each payment as received.
                     </div>
                 </div>
@@ -540,69 +580,108 @@ onBeforeUnmount(dispose);
                 </RouterLink>
             </div>
 
-            <!-- Discover WISHIs accepting members -->
-            <div v-if="joinableWishis.length" class="surface-padded">
-                <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                    <div>
-                        <h2 class="text-lg font-semibold">Discover WISHIs</h2>
-                        <p class="text-xs text-gray-500">New WISHIs accepting members. Tap to view or request to join.</p>
+            <!-- =============== Hero joinable + Discover strip =============== -->
+            <template v-if="heroJoinable">
+                <!-- Hero terracotta paper-tex card for the top joinable WISHI -->
+                <div class="surface paper-tex relative overflow-hidden p-7 sm:p-8"
+                     style="background: linear-gradient(140deg, #FBEEE6 0%, #F5DDD0 100%); border-color: #EEBFA4;">
+                    <div class="absolute -top-12 -right-10 w-48 h-48 rounded-full bg-brand-300/20 pointer-events-none"></div>
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium" style="background: #fff; color: #843620;">
+                        <EnvelopeIcon class="w-3.5 h-3.5" aria-hidden="true" />
+                        {{ heroJoinable.require_approval ? 'Open to join' : 'Direct join' }}
+                    </span>
+                    <h2 class="display text-3xl sm:text-4xl text-slate-900 mt-3 leading-tight">
+                        Join <span class="italic">{{ heroJoinable.name }}</span>
+                    </h2>
+                    <div class="text-sm text-slate-700 mt-1">
+                        by <strong class="text-slate-900">{{ heroJoinable.creator_name }}</strong>
+                        · {{ (heroJoinable.active_members ?? 0) + 1 }} of {{ heroJoinable.total_members }} seats taken
+                        <span v-if="heroJoinable.start_date"> · starts {{ formatDate(heroJoinable.start_date) }}</span>
                     </div>
-                    <RouterLink to="/wishis" class="btn-ghost btn-sm">See all →</RouterLink>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <div v-for="w in joinableWishis" :key="w.uuid" class="p-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition flex flex-col gap-2">
-                        <div class="flex items-start justify-between gap-2">
-                            <RouterLink :to="`/wishis/${w.uuid}`" class="font-semibold text-gray-900 hover:text-indigo-600 truncate">{{ w.name }}</RouterLink>
-                            <span v-if="w.status === 'draft'" class="badge-warning">Draft</span>
-                            <span v-else class="badge-success">Active</span>
-                        </div>
-                        <div class="text-xs text-gray-500">by {{ w.creator_name }}</div>
-                        <div class="text-sm text-gray-700">
-                            <span class="font-semibold">{{ formatINR(w.monthly_contribution) }}</span>/month · {{ w.duration_months }} cycles · <span class="capitalize">{{ w.cycle_type }}</span>
-                        </div>
-                        <div class="flex items-center gap-1.5 flex-wrap text-xs">
-                            <span class="badge-gray">{{ (w.active_members ?? 0) + 1 }}/{{ w.total_members }} members</span>
-                            <span class="badge-info">{{ w.seats_left }} seat{{ w.seats_left !== 1 ? 's' : '' }} left</span>
-                            <span v-if="w.start_date" class="text-gray-500">· starts {{ formatDate(w.start_date) }}</span>
-                        </div>
-                        <div class="flex gap-2 mt-1">
-                            <button @click="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-primary btn-sm flex-1">
-                                {{ joiningUuid === w.uuid ? 'Sending…' : (w.require_approval ? 'Request to join' : 'Join now') }}
-                            </button>
-                            <RouterLink :to="`/wishis/${w.uuid}`" class="btn-secondary btn-sm">View</RouterLink>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Stat cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="surface-padded">
-                    <div class="stat-bar bg-indigo-500"></div>
-                    <div class="text-sm text-gray-500">Active WISHIs</div>
-                    <div class="text-3xl font-bold mt-1.5">{{ dash.data?.active_wishis_count ?? '—' }}</div>
-                    <div class="text-xs text-gray-400 mt-2">{{ dash.data?.created_wishis_count ?? 0 }} created by you</div>
-                </div>
-                <div class="surface-padded">
-                    <div class="stat-bar bg-emerald-500"></div>
-                    <div class="text-sm text-gray-500">Total Contributed</div>
-                    <div class="text-3xl font-bold mt-1.5">{{ dash.data ? formatINR(dash.data.total_contributed) : '—' }}</div>
-                    <div class="text-xs text-gray-400 mt-2">across all cycles</div>
-                </div>
-                <div class="surface-padded">
-                    <div class="stat-bar bg-amber-500"></div>
-                    <div class="text-sm text-gray-500">Total Won</div>
-                    <div class="text-3xl font-bold mt-1.5">{{ dash.data ? formatINR(dash.data.total_won) : '—' }}</div>
-                    <div class="text-xs text-gray-400 mt-2">payouts received</div>
-                </div>
-                <div class="surface-padded">
-                    <div class="stat-bar bg-purple-500"></div>
-                    <div class="text-sm text-gray-500">Credit Score</div>
-                    <div class="flex items-baseline gap-2 mt-1.5">
-                        <div class="text-3xl font-bold">{{ dash.data?.credit_score ?? '—' }}</div>
-                        <span v-if="dash.data?.trust_level" class="capitalize" :class="trustColor[dash.data.trust_level]">{{ dash.data.trust_level }}</span>
+                    <div class="flex items-center gap-6 mt-5 relative">
+                        <div>
+                            <div class="text-[10px] uppercase tracking-widest text-slate-600">Monthly</div>
+                            <div class="display text-2xl sm:text-3xl text-slate-900 leading-none mt-1">{{ formatINR(heroJoinable.monthly_contribution) }}</div>
+                        </div>
+                        <div class="w-px h-9 bg-brand-200"></div>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-widest text-slate-600">Total pool</div>
+                            <div class="display text-2xl sm:text-3xl text-slate-900 leading-none mt-1">{{ formatINR(heroJoinable.total_pool ?? (heroJoinable.monthly_contribution * heroJoinable.total_members)) }}</div>
+                        </div>
+                        <div class="w-px h-9 bg-brand-200"></div>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-widest text-slate-600">Months</div>
+                            <div class="display text-2xl sm:text-3xl text-slate-900 leading-none mt-1">{{ heroJoinable.duration_months }}</div>
+                        </div>
                     </div>
-                    <div class="text-xs text-gray-400 mt-2">out of 100</div>
+
+                    <div class="flex gap-2 mt-6 relative">
+                        <button @click="requestJoin(heroJoinable.uuid)" :disabled="joiningUuid === heroJoinable.uuid" class="btn-primary btn-lg">
+                            <CheckCircleIcon v-if="joiningUuid !== heroJoinable.uuid" class="w-4 h-4" aria-hidden="true" />
+                            {{ joiningUuid === heroJoinable.uuid ? 'Sending…' : (heroJoinable.require_approval ? 'Request to join' : 'Join now') }}
+                        </button>
+                        <RouterLink :to="`/wishis/${heroJoinable.uuid}`" class="btn-secondary btn-lg">View details</RouterLink>
+                    </div>
+                </div>
+
+                <!-- Discover strip -->
+                <div v-if="restJoinable.length">
+                    <div class="flex items-end justify-between mb-3 gap-2 flex-wrap">
+                        <div>
+                            <h2 class="section-title">Discover</h2>
+                            <p class="section-sub">{{ restJoinable.length }} more WISHI{{ restJoinable.length !== 1 ? 's' : '' }} accepting members</p>
+                        </div>
+                        <RouterLink to="/wishis" class="text-sm text-brand-600 hover:underline inline-flex items-center gap-1">View all <ArrowRightIcon class="w-3.5 h-3.5" /></RouterLink>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div v-for="w in restJoinable" :key="w.uuid" class="surface surface-hover p-4 flex items-center gap-3.5">
+                            <div class="w-14 h-14 rounded-xl overflow-hidden shrink-0">
+                                <Cover :name="w.name" :height="56" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <RouterLink :to="`/wishis/${w.uuid}`" class="block text-sm font-medium text-slate-900 hover:text-brand-700 truncate">{{ w.name }}</RouterLink>
+                                <div class="text-xs text-slate-500 mt-0.5 truncate">
+                                    by {{ w.creator_name }} · <span class="capitalize">{{ w.cycle_type }}</span>
+                                    · {{ (w.active_members ?? 0) + 1 }}/{{ w.total_members }} filled
+                                </div>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <div class="display text-lg text-slate-900 leading-none">{{ formatINR(w.monthly_contribution) }}</div>
+                                <div class="text-[10px] uppercase tracking-widest text-slate-500 mt-1">per month</div>
+                            </div>
+                            <button @click="requestJoin(w.uuid)" :disabled="joiningUuid === w.uuid" class="btn-secondary btn-sm shrink-0">
+                                {{ joiningUuid === w.uuid ? '…' : (w.require_approval ? 'Request' : 'Join') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Stat cards — warm serif numerals -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="stat-tile">
+                    <div class="l">Active WISHIs</div>
+                    <div class="v mt-2">{{ dash.data?.active_wishis_count ?? '—' }}</div>
+                    <div class="text-xs text-slate-500 mt-2">{{ dash.data?.created_wishis_count ?? 0 }} created by you</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="l">Contributed</div>
+                    <div class="v mt-2">{{ dash.data ? formatINR(dash.data.total_contributed) : '—' }}</div>
+                    <div class="text-xs text-slate-500 mt-2">across all cycles</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="l">Won so far</div>
+                    <div class="v mt-2" style="color: #285F4D;">{{ dash.data ? formatINR(dash.data.total_won) : '—' }}</div>
+                    <div class="text-xs text-slate-500 mt-2">payouts received</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="l">Credit score</div>
+                    <div class="flex items-baseline gap-2 mt-2">
+                        <div class="v">{{ dash.data?.credit_score ?? '—' }}</div>
+                        <span v-if="dash.data?.trust_level" class="capitalize text-xs" :class="trustColor[dash.data.trust_level]">{{ dash.data.trust_level }}</span>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-2">out of 100</div>
                 </div>
             </div>
 
@@ -610,22 +689,22 @@ onBeforeUnmount(dispose);
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="surface-padded lg:col-span-2">
                     <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-semibold">Upcoming Payments</h2>
+                        <h2 class="section-title">Upcoming payments</h2>
                         <span class="badge-brand">{{ dash.data?.upcoming_payments?.length ?? 0 }} due</span>
                     </div>
                     <div v-if="!dash.data?.upcoming_payments?.length" class="text-center py-10 text-sm">
-                        <CheckCircleIcon class="w-10 h-10 mx-auto text-emerald-500 mb-2" aria-hidden="true" />
-                        <div class="font-semibold text-slate-700">You're all caught up</div>
+                        <CheckCircleIcon class="w-10 h-10 mx-auto text-green-600 mb-2" aria-hidden="true" />
+                        <div class="font-medium text-slate-700">You're all caught up</div>
                         <div class="text-xs text-slate-500">No upcoming payments right now.</div>
                     </div>
-                    <div v-else class="divide-y divide-gray-100">
+                    <div v-else class="divide-y divide-slate-100">
                         <div v-for="p in dash.data.upcoming_payments" :key="p.id" class="py-3 flex items-center justify-between gap-3">
                             <div class="min-w-0 flex-1">
-                                <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="font-medium text-gray-900 hover:text-indigo-600 hover:underline truncate block">
+                                <RouterLink v-if="p.wishi?.uuid" :to="`/wishis/${p.wishi.uuid}`" class="font-medium text-slate-900 hover:text-brand-600 hover:underline truncate block">
                                     {{ p.wishi.name }}
                                 </RouterLink>
-                                <div v-else class="font-medium text-gray-900 truncate">WISHI</div>
-                                <div class="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <div v-else class="font-medium text-slate-900 truncate">WISHI</div>
+                                <div class="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
                                     <span>Cycle #{{ p.cycle_number }}</span>
                                     <span>·</span>
                                     <span>Due {{ formatDate(p.due_date) }}</span>
@@ -634,21 +713,21 @@ onBeforeUnmount(dispose);
                                 </div>
                             </div>
                             <div class="text-right shrink-0">
-                                <div class="font-bold text-gray-900">{{ formatINR(p.amount) }}</div>
+                                <div class="display text-xl text-slate-900">{{ formatINR(p.amount) }}</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="surface-padded">
-                    <h2 class="text-lg font-semibold mb-4">Cycle Activity</h2>
+                    <h2 class="section-title mb-4">Cycle activity</h2>
                     <div class="space-y-3">
-                        <div class="p-4 rounded-xl bg-gray-50">
-                            <div class="text-sm text-gray-500">Active cycles</div>
-                            <div class="text-2xl font-bold mt-0.5">{{ dash.data?.active_cycles_count ?? '—' }}</div>
+                        <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                            <div class="text-xs uppercase tracking-widest text-slate-500">Active cycles</div>
+                            <div class="display text-3xl text-slate-900 mt-1">{{ dash.data?.active_cycles_count ?? '—' }}</div>
                         </div>
-                        <RouterLink to="/wishis" class="block w-full text-center btn-secondary">View all WISHIs →</RouterLink>
-                        <RouterLink to="/profile" class="block w-full text-center btn-ghost">Credit history →</RouterLink>
+                        <RouterLink to="/wishis" class="btn-secondary btn-block">View all WISHIs →</RouterLink>
+                        <RouterLink to="/profile" class="btn-ghost btn-block">Credit history →</RouterLink>
                     </div>
                 </div>
             </div>

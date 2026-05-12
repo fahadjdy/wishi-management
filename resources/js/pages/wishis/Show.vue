@@ -19,6 +19,7 @@ import {
     PaperAirplaneIcon, PlayIcon, XMarkIcon,
     DocumentTextIcon, ClockIcon, CheckCircleIcon, PauseCircleIcon,
 } from '@heroicons/vue/24/outline';
+import Cover from '@/components/Cover.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -67,11 +68,11 @@ const tabs = computed(() => {
 });
 
 const statusBadge = {
-    draft: 'badge-gray',
-    planned: 'badge-warning',
-    active: 'badge-success',
-    completed: 'badge-info',
-    cancelled: 'badge-danger',
+    draft: 'pill-draft',
+    planned: 'pill-planned',
+    active: 'pill-active',
+    completed: 'pill-completed',
+    cancelled: 'pill-cancelled',
 };
 
 const publishing = ref(false);
@@ -200,7 +201,10 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
              inline alert + stats strip + progress bar. Designed to fit in
              one viewport without scrolling.
         ============================================================== -->
-        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div class="surface overflow-hidden">
+            <!-- Cover banner — design's signature flourish at the top of every WISHI page -->
+            <Cover :name="wishi.name" :height="100" />
+
             <!-- Top row: name + badges + pool + primary action -->
             <div class="px-5 py-4 flex items-start gap-4 flex-wrap">
                 <div class="min-w-0 flex-1">
@@ -213,7 +217,7 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
                         </span>
                         <span v-if="isAdmin" class="badge-brand">Admin</span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 leading-tight truncate">{{ wishi.name }}</h1>
+                    <h1 class="display text-2xl sm:text-3xl text-slate-900 leading-tight truncate">{{ wishi.name }}</h1>
                     <p class="text-xs text-gray-500 mt-0.5">
                         <span v-if="wishi.status === 'draft'">Planned start {{ formatDate(wishi.start_date) }}</span>
                         <span v-else>Started {{ formatDate(wishi.start_date) }}</span>
@@ -223,9 +227,9 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
 
                 <div class="flex items-start gap-3 shrink-0">
                     <div class="text-right">
-                        <div class="text-[11px] uppercase tracking-wide text-gray-400">Pool / cycle</div>
-                        <div class="text-2xl font-bold text-gray-900 leading-none">{{ formatINR(wishi.total_pool) }}</div>
-                        <div class="text-[11px] text-gray-400 mt-0.5">
+                        <div class="text-[11px] uppercase tracking-widest text-slate-500">Pool / cycle</div>
+                        <div class="display text-3xl text-slate-900 leading-none mt-1">{{ formatINR(wishi.total_pool) }}</div>
+                        <div class="text-[11px] text-slate-500 mt-1">
                             {{ formatINR(wishi.monthly_contribution) }} × {{ wishi.total_members }} members
                         </div>
                     </div>
@@ -268,29 +272,29 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
             </div>
 
             <!-- Stats strip — inline, divided, no card-per-stat -->
-            <div class="px-5 py-3 bg-linear-to-b from-gray-50/60 to-white grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            <div class="px-5 py-3 grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100" style="background: linear-gradient(to bottom, rgba(242,234,219,0.4), white);">
                 <div class="px-3 first:pl-0">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Cycles opened</div>
-                    <div class="text-base font-bold text-emerald-600 mt-0.5">{{ wishi.cycles_completed ?? 0 }}<span class="text-gray-300 font-normal"> / {{ wishi.duration_months }}</span></div>
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500">Cycles opened</div>
+                    <div class="display text-xl text-green-700 mt-1">{{ wishi.cycles_completed ?? 0 }}<span class="text-slate-300"> / {{ wishi.duration_months }}</span></div>
                 </div>
                 <div class="px-3">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Remaining</div>
-                    <div class="text-base font-bold text-amber-600 mt-0.5">{{ wishi.cycles_remaining ?? wishi.duration_months }}</div>
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500">Remaining</div>
+                    <div class="display text-xl text-amber-700 mt-1">{{ wishi.cycles_remaining ?? wishi.duration_months }}</div>
                 </div>
                 <div class="px-3">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Active members</div>
-                    <div class="text-base font-bold text-gray-900 mt-0.5">{{ wishi.total_joined ?? ((wishi.active_members_count ?? 0) + 1) }}<span class="text-gray-300 font-normal"> / {{ wishi.total_members }}</span></div>
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500">Active members</div>
+                    <div class="display text-xl text-slate-900 mt-1">{{ wishi.total_joined ?? ((wishi.active_members_count ?? 0) + 1) }}<span class="text-slate-300"> / {{ wishi.total_members }}</span></div>
                 </div>
                 <div class="px-3">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Deferred pending</div>
-                    <div class="text-base font-bold mt-0.5" :class="(wishi.deferred_pending_total || 0) > 0 ? 'text-amber-700' : 'text-gray-400'">{{ formatINR(wishi.deferred_pending_total || 0) }}</div>
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500">Deferred pending</div>
+                    <div class="display text-xl mt-1" :class="(wishi.deferred_pending_total || 0) > 0 ? 'text-amber-700' : 'text-slate-400'">{{ formatINR(wishi.deferred_pending_total || 0) }}</div>
                 </div>
             </div>
 
             <!-- Slim progress bar (no labels — they're covered by stats above) -->
-            <div class="h-1 bg-gray-100">
-                <div v-if="wishi.status !== 'draft'" class="h-full bg-linear-to-r from-indigo-500 to-purple-500 transition-all" :style="{ width: progress + '%' }"></div>
-                <div v-else class="h-full transition-all" :class="wishi.is_full ? 'bg-emerald-500' : 'bg-amber-500'"
+            <div class="h-1 bg-slate-100">
+                <div v-if="wishi.status !== 'draft'" class="h-full transition-all" :style="{ width: progress + '%', background: 'linear-gradient(to right, #C25A36, #2D6B57)' }"></div>
+                <div v-else class="h-full transition-all" :class="wishi.is_full ? 'bg-green-500' : 'bg-amber-500'"
                     :style="{ width: Math.min(100, ((wishi.total_joined ?? (wishi.active_members_count + 1)) / Math.max(1, wishi.total_members)) * 100) + '%' }"></div>
             </div>
         </div>
@@ -298,17 +302,17 @@ watch(() => route.params.uuid, (newUuid, oldUuid) => {
         <!-- =============================================================
              TABS — flush with header, no top margin
         ============================================================== -->
-        <div class="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <nav class="flex overflow-x-auto border-b border-gray-200 bg-gray-50/60" role="tablist">
+        <div class="surface overflow-hidden">
+            <nav class="flex overflow-x-auto border-b border-slate-200" style="background: #FAF5EC;" role="tablist">
                 <button
                     v-for="t in tabs" :key="t.key"
                     @click="switchTab(t)"
                     :aria-selected="activeTab === t.key" role="tab" type="button"
-                    class="px-4 sm:px-5 py-2.5 text-sm font-medium whitespace-nowrap transition relative focus:outline-none"
-                    :class="activeTab === t.key ? 'text-indigo-700 bg-white' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'"
+                    class="px-4 sm:px-5 py-3 text-sm whitespace-nowrap transition relative focus:outline-none"
+                    :class="activeTab === t.key ? 'text-slate-900 bg-white font-medium' : 'text-slate-500 hover:text-slate-900 hover:bg-white/60'"
                 >
                     {{ t.label }}
-                    <span v-if="activeTab === t.key" class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600"></span>
+                    <span v-if="activeTab === t.key" class="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500"></span>
                 </button>
             </nav>
 

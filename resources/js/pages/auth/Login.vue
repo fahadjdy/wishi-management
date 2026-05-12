@@ -37,7 +37,9 @@ async function submit() {
 
 <template>
     <div>
-        <h2 class="text-2xl font-bold text-slate-900 mb-1.5">Welcome back</h2>
+        <h2 class="display text-3xl text-slate-900 mb-1.5">
+            Welcome <span class="italic text-brand-600">back</span>.
+        </h2>
         <p class="text-sm text-slate-500 mb-7">Sign in to manage your WISHIs.</p>
 
         <form @submit.prevent="submit" class="space-y-4" novalidate>
@@ -80,7 +82,7 @@ async function submit() {
                 Keep me signed in on this device
             </label>
 
-            <button type="submit" :disabled="loading" class="btn-primary btn-block">
+            <button type="submit" :disabled="loading" class="btn-primary btn-block btn-lg">
                 <LockClosedIcon v-if="!loading" class="w-4 h-4" aria-hidden="true" />
                 <span v-if="loading">Signing in…</span>
                 <span v-else>Sign in securely</span>

@@ -476,6 +476,37 @@ All write routes are throttled (`sensitive` / `bid` / `auth` buckets per `AppSer
 
 ## 16. Frontend structure
 
+### Design language (2026-05-12 redesign — "warm desi-modern")
+
+Cream paper background with terracotta primary + deep green accents — feels closer to a kitty among friends than a fintech dashboard.
+
+| Token (Tailwind) | Maps to | Notes |
+|---|---|---|
+| `brand-*` (also `indigo-*`) | terracotta `#FBEEE6 → #2C0E08` | primary actions, accents |
+| `accent-*` / `green-*` / `emerald-*` | deep green `#ECF3EE → #1F4A3C` | success, trust, money paid |
+| `slate-*` / `gray-*` | warm sand → ink `#FAF5EC → #1F1812` | surfaces, text |
+| `amber-*` | mustard `#FAEFD1 → #6A4C12` | warnings, deferred |
+| `rose-*` | warm red `#F8DCDC → #5A1C1C` | late / cancelled |
+
+Typography:
+- **Instrument Serif** (`.display`, `.serif`, `font-display`) for all hero numerals, page headers, large money figures. Use italic + terracotta for emphasis (e.g. `Namaste, <em>Rajesh</em>.`).
+- **DM Sans** for body. **JetBrains Mono** for code/tabular numerals (`.num` uses tnum/lnum features).
+- Wordmark is text-only: `WISHI.` in Instrument Serif with the terminal dot in terracotta — `<Logo variant="stacked" />`.
+
+Helper classes (in `resources/css/app.css`):
+- `.surface` / `.surface-padded` — paper-white card with subtle warm shadow + sand border, rounded-2xl.
+- `.stat-tile` — stat panel with `.v` (serif numeral) + `.l` (uppercase tracked label).
+- `.pill-planned / -active / -completed / -cancelled / -draft` — lifecycle status pills.
+- `.section-title` + `.section-sub` — display serif heading + muted subline.
+- `.paper-tex` — subtle radial-dot paper texture; layer over gradient hero areas.
+- `.coin` — radial-gradient brass coin glyph for trust / win callouts.
+- `.brandmark` (+ `.mono` for dark-bg variants) — typographic wordmark utility.
+
+Shell:
+- Desktop sidebar is **ink** (`#1F1812`) with terracotta accent rail on active items; brand wordmark shown stacked at top.
+- Top bar is paper white with cream tint; bottom mobile nav keeps cream paper feel with a terracotta FAB for "+ New WISHI" (admin only).
+- Hero pages (member dashboard, Create WISHI summary) use the cream → terracotta paper-tex gradient as their signature flourish.
+
 ```
 resources/js/
   app.js                      - Vue + Pinia + Router + Toast bootstrap

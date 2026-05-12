@@ -19,8 +19,6 @@ const toast = useToast();
 
 const isAdmin = computed(() => !!auth.user?.is_admin);
 
-// Primary nav — same 4 items live on both the desktop sidebar and the mobile
-// bottom bar so the mental model doesn't fracture across breakpoints.
 const mainNav = computed(() => ([
     { name: 'Home',          to: '/dashboard',     icon: HomeIcon },
     { name: 'WISHIs',        to: '/wishis',        icon: RectangleStackIcon },
@@ -47,33 +45,35 @@ onMounted(() => { notif.fetch().catch(() => {}); });
 </script>
 
 <template>
-    <div class="min-h-screen flex bg-slate-50">
+    <div class="min-h-screen flex" style="background-color: #FAF5EC;">
         <!-- ================================================================
-             DESKTOP SIDEBAR (≥ lg). Mobile users navigate via the bottom bar.
+             DESKTOP SIDEBAR (ink-on-cream with terracotta accent rail)
         ================================================================= -->
-        <aside class="hidden lg:flex sticky top-0 h-screen w-64 shrink-0 flex-col bg-slate-900 text-slate-200 border-r border-slate-800">
-            <div class="px-5 py-5 border-b border-white/10">
-                <Logo variant="horizontal" size="md" mono />
+        <aside class="hidden lg:flex sticky top-0 h-screen w-64 shrink-0 flex-col" style="background: #1F1812; color: #FAF5EC;">
+            <div class="px-5 py-6 border-b border-white/10">
+                <Logo variant="stacked" size="md" mono />
             </div>
 
-            <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto" aria-label="Primary">
-                <div class="px-2 mb-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">Main</div>
+            <nav class="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto" aria-label="Primary">
+                <div class="px-3 mb-2 text-[10px] uppercase tracking-[0.18em] font-semibold" style="color: #A89E8E;">Main</div>
                 <RouterLink
                     v-for="item in mainNav" :key="item.to" :to="item.to"
-                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                    active-class="!bg-brand-600/20 !text-white"
+                    class="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                    style="color: rgba(250,245,236,0.72);"
+                    active-class="!bg-brand-500/15 !text-cream !font-medium nav-active"
                 >
                     <component :is="item.icon" class="w-5 h-5 shrink-0" aria-hidden="true" />
                     <span class="flex-1 truncate">{{ item.name }}</span>
-                    <span v-if="item.badge > 0" class="bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-5 text-center">{{ item.badge }}</span>
+                    <span v-if="item.badge > 0" class="bg-brand-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-5 text-center">{{ item.badge }}</span>
                 </RouterLink>
 
                 <template v-if="isAdmin">
-                    <div class="px-2 mt-6 mb-2 text-[10px] uppercase tracking-widest text-slate-400 font-bold">Admin</div>
+                    <div class="px-3 mt-6 mb-2 text-[10px] uppercase tracking-[0.18em] font-semibold" style="color: #A89E8E;">Admin</div>
                     <RouterLink
                         to="/admin/users"
-                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                        active-class="!bg-brand-600/20 !text-white"
+                        class="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                        style="color: rgba(250,245,236,0.72);"
+                        active-class="!bg-brand-500/15 !text-cream !font-medium nav-active"
                     >
                         <ShieldCheckIcon class="w-5 h-5 shrink-0" aria-hidden="true" />
                         <span class="flex-1 truncate">Members</span>
@@ -87,7 +87,7 @@ onMounted(() => { notif.fetch().catch(() => {}); });
                     New WISHI
                 </RouterLink>
             </div>
-            <div v-else class="px-4 py-4 border-t border-white/10 text-center text-[11px] text-slate-400">
+            <div v-else class="px-4 py-4 border-t border-white/10 text-center text-[11px]" style="color: #A89E8E;">
                 Only platform admins can create WISHIs
             </div>
         </aside>
@@ -96,10 +96,10 @@ onMounted(() => { notif.fetch().catch(() => {}); });
              MAIN COLUMN
         ================================================================= -->
         <div class="flex-1 flex flex-col min-w-0">
-            <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+            <header class="sticky top-0 z-30 backdrop-blur border-b border-slate-200" style="background: rgba(255,255,255,0.85);">
                 <div class="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
-                        <!-- Mobile brand mark — bottom nav handles routing so no hamburger needed -->
+                        <!-- Mobile brand mark — bottom nav handles routing so no hamburger -->
                         <div class="lg:hidden shrink-0">
                             <Logo variant="horizontal" size="sm" />
                         </div>
@@ -107,19 +107,19 @@ onMounted(() => { notif.fetch().catch(() => {}); });
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <RouterLink to="/notifications" class="relative p-2 rounded-lg hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="Notifications">
+                        <RouterLink to="/notifications" class="relative p-2 rounded-xl hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="Notifications">
                             <BellIcon class="w-5 h-5 text-slate-700" aria-hidden="true" />
-                            <span v-if="notif.unreadCount > 0" class="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" aria-hidden="true"></span>
+                            <span v-if="notif.unreadCount > 0" class="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full ring-2 ring-white" aria-hidden="true"></span>
                         </RouterLink>
 
                         <Menu as="div" class="relative">
                             <MenuButton class="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                                <div class="w-9 h-9 rounded-full overflow-hidden bg-linear-to-br from-brand-500 to-brand-700 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                                <div class="w-9 h-9 rounded-full overflow-hidden bg-brand-100 text-brand-700 text-sm font-semibold flex items-center justify-center shrink-0 border border-white">
                                     <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" :alt="auth.user.name" class="w-full h-full object-cover" />
                                     <span v-else>{{ initials }}</span>
                                 </div>
                                 <div class="hidden sm:block text-left">
-                                    <div class="text-sm font-semibold text-slate-900 leading-tight truncate max-w-35">{{ auth.user?.name }}</div>
+                                    <div class="text-sm font-medium text-slate-900 leading-tight truncate max-w-35">{{ auth.user?.name }}</div>
                                     <div class="text-xs text-slate-500 leading-tight truncate max-w-35">{{ auth.user?.email }}</div>
                                 </div>
                                 <ChevronDownIcon class="w-4 h-4 text-slate-500 hidden sm:block" aria-hidden="true" />
@@ -132,9 +132,9 @@ onMounted(() => { notif.fetch().catch(() => {}); });
                                 leave-from-class="opacity-100"
                                 leave-to-class="opacity-0"
                             >
-                                <MenuItems class="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 focus:outline-none origin-top-right">
+                                <MenuItems class="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-lg border border-slate-200 py-1 z-50 focus:outline-none origin-top-right">
                                     <div class="px-4 py-3 border-b border-slate-100 sm:hidden">
-                                        <div class="font-semibold text-sm truncate">{{ auth.user?.name }}</div>
+                                        <div class="font-medium text-sm truncate">{{ auth.user?.name }}</div>
                                         <div class="text-xs text-slate-500 truncate">{{ auth.user?.email }}</div>
                                     </div>
                                     <MenuItem v-slot="{ active }">
@@ -171,25 +171,26 @@ onMounted(() => { notif.fetch().catch(() => {}); });
         </div>
 
         <!-- ================================================================
-             MOBILE BOTTOM NAV (< lg)
+             MOBILE BOTTOM NAV (< lg) — terracotta FAB for new WISHI
         ================================================================= -->
-        <nav class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 safe-bottom shadow-[0_-2px_8px_rgba(15,23,42,0.04)]" aria-label="Mobile navigation">
+        <nav class="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-200 safe-bottom" style="background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); box-shadow: 0 -2px 8px rgba(31,24,18,0.04);" aria-label="Mobile navigation">
             <div class="relative">
                 <div class="grid grid-cols-4">
                     <RouterLink
                         v-for="item in mainNav" :key="item.to" :to="item.to"
-                        class="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium text-slate-500 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:rounded-md min-h-14"
-                        active-class="!text-brand-700"
+                        class="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:rounded-md min-h-14"
+                        active-class="!text-brand-600"
                     >
                         <div class="relative">
                             <component :is="item.icon" class="w-6 h-6" aria-hidden="true" />
-                            <span v-if="item.badge > 0" class="absolute -top-1 -right-2 bg-rose-500 text-white text-[9px] font-bold rounded-full px-1 min-w-4 h-4 flex items-center justify-center">{{ item.badge }}</span>
+                            <span v-if="item.badge > 0" class="absolute -top-1 -right-2 bg-brand-500 text-white text-[9px] font-bold rounded-full px-1 min-w-4 h-4 flex items-center justify-center">{{ item.badge }}</span>
                         </div>
                         {{ item.name }}
                     </RouterLink>
                 </div>
                 <RouterLink v-if="isAdmin" to="/wishis/create"
-                    class="absolute -top-7 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/40 flex items-center justify-center hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-500 ring-4 ring-slate-50"
+                    class="absolute -top-7 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-brand-500 text-white flex items-center justify-center hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-500"
+                    style="box-shadow: 0 8px 20px -4px rgba(194,90,54,0.5); border: 3px solid #FAF5EC;"
                     aria-label="Create WISHI"
                 >
                     <PlusIcon class="w-7 h-7" aria-hidden="true" />
@@ -198,3 +199,20 @@ onMounted(() => { notif.fetch().catch(() => {}); });
         </nav>
     </div>
 </template>
+
+<style scoped>
+.nav-active {
+    position: relative;
+}
+.nav-active::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 16px;
+    background: #D2754C;
+    border-radius: 2px;
+}
+</style>

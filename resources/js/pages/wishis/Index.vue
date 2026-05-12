@@ -12,6 +12,7 @@ import {
     PaperAirplaneIcon, PlayIcon, ChevronLeftIcon, ChevronRightIcon,
     CheckIcon, ArrowRightStartOnRectangleIcon,
 } from '@heroicons/vue/24/outline';
+import Cover from '@/components/Cover.vue';
 
 const store = useWishiStore();
 const auth = useAuthStore();
@@ -133,17 +134,17 @@ function gotoPage(n) {
 }
 
 const statusBadge = {
-    draft: 'badge-gray',
-    planned: 'badge-warning',
-    active: 'badge-success',
-    completed: 'badge-info',
-    cancelled: 'badge-danger',
+    draft: 'pill-draft',
+    planned: 'pill-planned',
+    active: 'pill-active',
+    completed: 'pill-completed',
+    cancelled: 'pill-cancelled',
 };
 
 // Left-edge accent strip on each card — signals role at a glance without a badge.
 function roleAccent(w) {
     if (w.is_admin) return 'bg-brand-500';
-    if (w.is_member) return 'bg-emerald-500';
+    if (w.is_member) return 'bg-green-500';
     if (w.can_join) return 'bg-amber-400';
     return 'bg-slate-200';
 }
@@ -174,8 +175,8 @@ const statusChips = computed(() => {
         <!-- ============ Header ============ -->
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">WISHIs</h1>
-                <p class="text-sm text-slate-500">Yours plus every WISHI accepting new members.</p>
+                <h1 class="display text-4xl text-slate-900">Your <span class="italic text-brand-600">WISHIs</span></h1>
+                <p class="text-sm text-slate-500 mt-1">Yours plus every WISHI accepting new members.</p>
             </div>
             <RouterLink v-if="auth.user?.is_admin" to="/wishis/create" class="btn-primary">
                 <PlusIcon class="w-4 h-4" aria-hidden="true" />
@@ -277,72 +278,76 @@ const statusChips = computed(() => {
             <div
                 v-for="w in store.wishis" :key="w.id"
                 @click="openWishi(w.uuid)"
-                class="relative surface overflow-hidden cursor-pointer transition hover:shadow-md hover:border-brand-300 group focus-ring"
+                class="surface surface-hover overflow-hidden cursor-pointer group focus-ring transition"
                 tabindex="0"
                 @keyup.enter="openWishi(w.uuid)"
             >
-                <!-- Left-edge role accent bar -->
-                <div class="absolute top-0 left-0 bottom-0 w-1" :class="roleAccent(w)" aria-hidden="true"></div>
+                <!-- Cover banner (design's signature flourish) -->
+                <Cover :name="w.name" :height="80" />
 
-                <!-- "Open to join" ribbon (only on joinable cards) -->
-                <span v-if="w.can_join" class="absolute top-3 right-3 badge-brand">New · open to join</span>
-
-                <div class="p-5 pl-6">
-                    <!-- Row 1: ONE primary badge (status) + optional role hint -->
-                    <div class="flex items-center justify-between gap-2 mb-3 min-h-6">
-                        <span :class="statusBadge[w.status]" class="capitalize">{{ wishiStatusLabels[w.status] }}</span>
-                        <span v-if="w.is_admin && !w.can_join" class="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Your WISHI</span>
-                        <span v-else-if="w.is_member && !w.can_join" class="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
-                            {{ w.my_membership_status === 'pending' ? 'Pending' : 'Member' }}
-                        </span>
+                <div class="p-5">
+                    <!-- Title + status pill -->
+                    <div class="flex items-start justify-between gap-2">
+                        <h3 class="text-base font-medium text-slate-900 group-hover:text-brand-700 transition leading-tight truncate">{{ w.name }}</h3>
+                        <span :class="statusBadge[w.status]" class="shrink-0 capitalize">{{ wishiStatusLabels[w.status] }}</span>
                     </div>
 
-                    <!-- Title -->
-                    <h3 class="font-semibold text-lg text-slate-900 group-hover:text-brand-700 transition truncate">{{ w.name }}</h3>
-
-                    <!-- Meta line (secondary info as text, not badges) -->
-                    <p class="text-xs text-slate-500 mt-0.5 truncate">
-                        <span class="capitalize">{{ w.cycle_type }}</span><span v-if="w.cycle_type === 'hybrid'"> · {{ w.auto_cycles_count }}R / {{ w.tender_cycles_count }}T</span>
-                        · {{ w.duration_months }} cycles
+                    <!-- Mode · by Admin -->
+                    <p class="text-xs text-slate-500 mt-1 truncate">
+                        <span class="capitalize">{{ w.cycle_type }}</span><span v-if="w.cycle_type === 'hybrid'"> · {{ w.auto_cycles_count }}R/{{ w.tender_cycles_count }}T</span>
+                        · {{ w.duration_months }}{{ w.cycle_type === 'tender' ? 'mo' : 'mo' }}
                         <span v-if="w.creator_name"> · by {{ w.creator_name }}</span>
                     </p>
 
-                    <!-- Simplified stats -->
-                    <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+                    <!-- Money grid: Monthly / Pool -->
+                    <div class="grid grid-cols-2 gap-3 mt-4">
                         <div>
-                            <div class="text-[11px] text-slate-500 uppercase tracking-wide">Pool / cycle</div>
-                            <div class="font-bold text-slate-900 text-lg leading-tight">{{ formatINR(w.total_pool) }}</div>
-                            <div class="text-[11px] text-slate-400">{{ formatINR(w.monthly_contribution) }} × {{ w.total_members }}</div>
+                            <div class="text-[10px] text-slate-500 uppercase tracking-widest">Monthly</div>
+                            <div class="display text-xl text-slate-900 leading-none mt-1">{{ formatINR(w.monthly_contribution) }}</div>
                         </div>
                         <div>
-                            <div class="text-[11px] text-slate-500 uppercase tracking-wide">Members</div>
-                            <div class="font-bold text-slate-900 text-lg leading-tight">
-                                {{ w.total_joined ?? ((w.active_members_count ?? 0) + 1) }}<span class="text-slate-400 text-sm font-normal"> / {{ w.total_members }}</span>
-                            </div>
-                            <div v-if="w.seats_remaining > 0" class="text-[11px] text-amber-600 font-medium">{{ w.seats_remaining }} seat{{ w.seats_remaining !== 1 ? 's' : '' }} open</div>
-                            <div v-else-if="w.cycles_remaining > 0" class="text-[11px] text-slate-400">{{ w.cycles_remaining }} cycle{{ w.cycles_remaining !== 1 ? 's' : '' }} left</div>
-                            <div v-else class="text-[11px] text-emerald-600 font-medium">Done</div>
+                            <div class="text-[10px] text-slate-500 uppercase tracking-widest">Pool</div>
+                            <div class="display text-xl text-slate-900 leading-none mt-1">{{ formatINR(w.total_pool) }}</div>
                         </div>
                     </div>
 
-                    <!-- Progress bar (only for active/completed/cancelled) -->
-                    <div v-if="!['draft','planned'].includes(w.status)" class="mt-4">
-                        <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div class="h-full bg-brand-500 rounded-full transition-all" :style="{ width: Math.min(100, ((w.cycles_completed ?? 0) / w.duration_months) * 100) + '%' }"></div>
-                        </div>
-                        <div class="flex items-center justify-between mt-1.5 text-[11px] text-slate-500">
-                            <span>{{ w.cycles_completed ?? 0 }} / {{ w.duration_months }} cycles</span>
-                            <span v-if="w.status !== 'draft'">Started {{ formatDate(w.start_date) }}</span>
-                        </div>
+                    <!-- Dashed separator + members / next label row -->
+                    <div class="mt-4 pt-3 flex items-center justify-between gap-2 text-xs text-slate-500" style="border-top: 1px dashed #E9DFCC;">
+                        <span class="inline-flex items-center gap-1.5">
+                            <span class="display text-slate-900">{{ w.total_joined ?? ((w.active_members_count ?? 0) + 1) }}</span>
+                            <span class="text-slate-400">/ {{ w.total_members }} filled</span>
+                        </span>
+                        <span v-if="w.status === 'active'" class="truncate">{{ w.cycles_completed ?? 0 }} of {{ w.duration_months }} done</span>
+                        <span v-else-if="w.status === 'planned'" class="truncate">Starts {{ formatDate(w.start_date) }}</span>
+                        <span v-else-if="w.status === 'completed'" class="text-green-700">Completed</span>
+                        <span v-else-if="w.status === 'cancelled'" class="text-rose-600">Cancelled</span>
+                        <span v-else>Draft</span>
                     </div>
-                    <div v-else class="mt-4 text-[11px] text-slate-500">Planned from {{ formatDate(w.start_date) }}</div>
+
+                    <!-- Active-state progress strip (segments) -->
+                    <div v-if="w.status === 'active' && w.duration_months" class="mt-3 flex gap-1">
+                        <div v-for="i in w.duration_months" :key="i"
+                             class="flex-1 h-2 rounded-sm"
+                             :style="{
+                                 background: i <= (w.cycles_completed ?? 0)
+                                     ? '#2D6B57'
+                                     : i === (w.cycles_completed ?? 0) + 1
+                                         ? '#C25A36'
+                                         : '#F2EADB'
+                             }"></div>
+                    </div>
+
+                    <!-- Role hint -->
+                    <div v-if="w.is_admin || (w.is_member && !w.can_join)" class="mt-3 text-[10px] uppercase tracking-widest font-medium" :class="w.is_admin ? 'text-brand-700' : 'text-green-700'">
+                        {{ w.is_admin ? 'Your WISHI' : (w.my_membership_status === 'pending' ? 'Pending approval' : 'Member') }}
+                    </div>
 
                     <!-- Inline alerts -->
                     <div v-if="w.active_tender_cycle" class="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-xs flex items-center justify-between gap-2">
-                        <span class="font-semibold text-amber-900">Tender live · Cycle #{{ w.active_tender_cycle.cycle_number }}</span>
+                        <span class="font-medium text-amber-800">Tender live · Cycle #{{ w.active_tender_cycle.cycle_number }}</span>
                         <span class="text-amber-700">{{ w.active_tender_cycle.bid_count }} bid{{ w.active_tender_cycle.bid_count !== 1 ? 's' : '' }}</span>
                     </div>
-                    <div v-if="w.is_admin && w.unhandled_surplus > 0" class="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 font-semibold">
+                    <div v-if="w.is_admin && w.unhandled_surplus > 0" class="mt-3 rounded-lg bg-green-50 border border-green-200 p-2.5 text-xs text-green-800 font-medium">
                         Unhandled surplus: {{ formatINR(w.unhandled_surplus) }}
                     </div>
 
@@ -351,7 +356,7 @@ const statusChips = computed(() => {
                         v-if="w.can_join"
                         @click.stop="requestJoin(w.uuid)"
                         :disabled="joiningUuid === w.uuid"
-                        class="btn-primary btn-sm w-full mt-4"
+                        class="btn-primary btn-sm btn-block mt-4"
                     >
                         <PaperAirplaneIcon v-if="joiningUuid !== w.uuid && w.require_approval" class="w-4 h-4" aria-hidden="true" />
                         <CheckIcon v-else-if="joiningUuid !== w.uuid" class="w-4 h-4" aria-hidden="true" />
@@ -361,7 +366,7 @@ const statusChips = computed(() => {
                         v-else-if="w.is_member && ['pending','approved'].includes(w.my_membership_status) && ['draft','planned'].includes(w.status) && !w.is_admin"
                         @click.stop="cancelJoin(w)"
                         :disabled="joiningUuid === w.uuid"
-                        class="btn-secondary btn-sm w-full mt-4 text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+                        class="btn-secondary btn-sm btn-block mt-4 text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
                     >
                         <ArrowRightStartOnRectangleIcon v-if="joiningUuid !== w.uuid && w.my_membership_status !== 'pending'" class="w-4 h-4" aria-hidden="true" />
                         <XMarkIcon v-else-if="joiningUuid !== w.uuid" class="w-4 h-4" aria-hidden="true" />
@@ -371,7 +376,7 @@ const statusChips = computed(() => {
                         v-if="w.is_admin && w.can_start"
                         @click.stop="startWishiFromCard(w.uuid)"
                         :disabled="startingUuid === w.uuid"
-                        class="btn-success btn-sm w-full mt-2"
+                        class="btn-primary btn-sm btn-block mt-2"
                     >
                         <PlayIcon v-if="startingUuid !== w.uuid" class="w-4 h-4" aria-hidden="true" />
                         {{ startingUuid === w.uuid ? 'Starting…' : 'Start WISHI now' }}

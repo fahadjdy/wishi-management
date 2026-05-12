@@ -307,22 +307,22 @@ const eligibleMembers = computed(() =>
 <template>
     <div v-if="!cycle || !wishi" class="text-center py-16 text-gray-400">Loading…</div>
     <div v-else class="space-y-5">
-        <RouterLink :to="`/wishis/${wishi.uuid}/cycles`" class="text-sm text-indigo-600 hover:underline">← Back to cycles</RouterLink>
+        <RouterLink :to="`/wishis/${wishi.uuid}/cycles`" class="text-sm text-brand-600 hover:underline">← Back to cycles</RouterLink>
 
         <!-- Header -->
         <div class="surface-padded">
             <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
                     <div class="flex items-center gap-2 flex-wrap">
-                        <h1 class="text-2xl font-bold">Cycle #{{ cycle.cycle_number }}</h1>
+                        <h1 class="display text-3xl text-slate-900">Cycle <span class="italic text-brand-600">#{{ cycle.cycle_number }}</span></h1>
                         <span class="badge-info capitalize">{{ cycleStatusLabels[cycle.status] }}</span>
                         <span class="badge-gray capitalize">{{ cycle.mode }}</span>
                     </div>
-                    <p class="text-sm text-gray-500 mt-1">{{ wishi.name }}</p>
+                    <p class="text-sm text-slate-500 mt-1">{{ wishi.name }}</p>
                 </div>
                 <div class="text-right">
-                    <div class="text-xs text-gray-500">Pool</div>
-                    <div class="text-2xl font-bold">{{ formatINR(cycle.total_pool) }}</div>
+                    <div class="text-[11px] uppercase tracking-widest text-slate-500">Pool</div>
+                    <div class="display text-3xl text-slate-900 mt-1">{{ formatINR(cycle.total_pool) }}</div>
                 </div>
             </div>
 
