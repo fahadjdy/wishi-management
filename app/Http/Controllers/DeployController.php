@@ -45,6 +45,26 @@ class DeployController extends Controller
     }
 
     /**
+     * Clears cached config/route/view so .env edits actually take effect.
+     * On shared hosting a stale bootstrap/cache/config.php silently ignores
+     * .env changes — this is usually why "I edited .env but nothing changed".
+     */
+    public function clear(): Response
+    {
+        $out = [];
+        foreach (['config:clear', 'cache:clear', 'route:clear', 'view:clear'] as $cmd) {
+            try {
+                Artisan::call($cmd);
+                $out[] = "{$cmd}: " . trim(Artisan::output());
+            } catch (\Throwable $e) {
+                $out[] = "{$cmd}: ERROR — " . $e->getMessage();
+            }
+        }
+
+        return $this->text(implode("\n", $out));
+    }
+
+    /**
      * Temporary health check to debug 500s on shared hosting. Each probe is
      * wrapped so the page itself never 500s — it reports the failure instead.
      * Remove this route once the deploy is healthy.
