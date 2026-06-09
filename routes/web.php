@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('deploy')->group(function () {
     Route::get('migrate', [DeployController::class, 'migrate']);
     Route::get('seed-admin', [DeployController::class, 'seedAdmin']);
+    Route::get('diag', [DeployController::class, 'diag']);
 });
 
 // SPA catch-all. Every non-API, non-sanctum, non-storage, non-up, non-deploy
