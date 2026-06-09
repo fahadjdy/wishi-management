@@ -1,0 +1,20 @@
+# ---------------------------------------------------------------------------
+# Root .htaccess for shared hosting where the document root is the PROJECT
+# root (e.g. public_html/) instead of Laravel's public/ folder.
+#
+# Every request is rewritten into public/ so the real front controller
+# (public/index.php + public/.htaccess) handles routing. Without this, the
+# server can't find index.php at the root and returns 404 for every URL.
+#
+# Safe to leave in place even if the host's docroot already points at public/
+# (this file simply won't be in the docroot and is ignored).
+# ---------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Don't loop: skip requests that are already inside public/.
+    RewriteCond %{REQUEST_URI} !^/public/
+
+    # Forward everything (incl. the root) into public/.
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
