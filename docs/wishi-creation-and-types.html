@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WISHI — Creating a WISHI &amp; Types</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --ink:#1f2937; --ink2:#4b5563; --head:#0f172a;
+    --brand:#6d28d9; --brand2:#4f46e5; --brandlt:#f5f3ff; --brandbd:#ddd6fe;
+    --amber:#b45309; --amberlt:#fffbeb; --amberbd:#fde68a;
+    --green:#047857; --greenlt:#ecfdf5;
+  }
+  body {
+    font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .slide {
+    width:297mm; height:210mm; padding:15mm 18mm 12mm;
+    page-break-after:always; position:relative; overflow:hidden;
+    display:flex; flex-direction:column; background:#fff;
+  }
+  .slide:last-child { page-break-after:auto; }
+
+  /* footer */
+  .foot {
+    position:absolute; left:18mm; right:18mm; bottom:8mm;
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:11px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:7px;
+  }
+  .foot b { color:var(--brand); letter-spacing:2px; }
+
+  /* kicker + title */
+  .kicker { font-size:12px; letter-spacing:3px; text-transform:uppercase; color:var(--brand); font-weight:700; margin-bottom:6px; }
+  h1.title { font-size:34px; color:var(--head); line-height:1.12; }
+  h1.title small { display:block; font-size:15px; font-weight:500; color:var(--ink2); margin-top:8px; letter-spacing:0; }
+  .sub { font-size:14px; color:var(--ink2); margin-top:4px; }
+
+  /* icon chip */
+  .ic { display:inline-flex; align-items:center; justify-content:center; border-radius:13px; background:var(--brandlt); color:var(--brand); }
+  .ic svg { width:60%; height:60%; }
+  .ic.lg { width:64px; height:64px; }
+  .ic.md { width:48px; height:48px; }
+  .ic.sm { width:38px; height:38px; border-radius:10px; }
+  .ic.amber { background:var(--amberlt); color:var(--amber); }
+  .ic.green { background:var(--greenlt); color:var(--green); }
+
+  /* generic cards */
+  .row { display:flex; gap:18px; }
+  .col { flex:1; }
+  .card { border:1px solid #e5e7eb; border-radius:16px; padding:18px 20px; background:#fff; }
+  .card h3 { font-size:17px; color:var(--head); margin-bottom:4px; }
+  .card p { font-size:13px; color:var(--ink2); line-height:1.55; }
+  .card .hd { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+
+  /* step item (detail slides) */
+  .item { display:flex; gap:16px; align-items:flex-start; padding:13px 0; border-bottom:1px dashed #e5e7eb; }
+  .item:last-child { border-bottom:none; }
+  .item .body b { font-size:15px; color:var(--head); display:block; }
+  .item .body span { font-size:13px; color:var(--ink2); }
+
+  /* chips */
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .chip { border:1.5px solid var(--brandbd); background:var(--brandlt); color:var(--brand);
+    border-radius:999px; padding:6px 14px; font-size:12.5px; font-weight:600; }
+  .chip.muted { border-color:#e5e7eb; background:#f9fafb; color:#374151; }
+
+  /* example panel */
+  .example { margin-top:14px; border-radius:14px; padding:16px 20px;
+    background:linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%); border:1px solid var(--brandbd); }
+  .example .lbl { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--brand); font-weight:700; }
+  .example .big { font-size:26px; color:var(--head); font-weight:700; margin-top:2px; }
+  .example .note { font-size:12px; color:var(--ink2); margin-top:4px; }
+
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; }
+  .tag.r { background:var(--brandlt); color:var(--brand); }
+  .tag.t { background:var(--amberlt); color:var(--amber); }
+
+  ul.ticks { list-style:none; margin-top:6px; }
+  ul.ticks li { position:relative; padding:5px 0 5px 26px; font-size:13px; color:var(--ink2); }
+  ul.ticks li::before { content:"\2713"; position:absolute; left:0; top:5px; color:var(--green); font-weight:800; }
+
+  /* big 3-step cards on overview */
+  .stepcard { flex:1; border:1px solid #e5e7eb; border-radius:18px; padding:22px; position:relative; }
+  .stepcard .n { position:absolute; top:16px; right:18px; font-size:46px; font-weight:800; color:#eef2ff; line-height:1; }
+  .stepcard h3 { font-size:18px; color:var(--head); margin:14px 0 6px; }
+  .stepcard p { font-size:13px; color:var(--ink2); }
+
+  .center { display:flex; flex-direction:column; justify-content:center; height:100%; }
+</style>
+</head>
+<body>
+
+<!-- ============ SLIDE 1 — TITLE ============ -->
+<div class="slide" style="padding:0;">
+  <div style="height:100%; background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 55%,#9333ea 100%); color:#fff; padding:34mm 24mm; display:flex; flex-direction:column; justify-content:center;">
+    <div style="display:inline-block; align-self:flex-start; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.35); padding:6px 16px; border-radius:999px; font-size:12px; letter-spacing:2px; text-transform:uppercase;">A Visual Guide</div>
+    <h1 style="color:#fff; font-size:52px; margin-top:22px; line-height:1.1;">Creating a WISHI<br>&amp; the Types of WISHI</h1>
+    <p style="font-size:19px; color:#ede9fe; margin-top:18px; max-width:75%;">A simple, step-by-step look at how a savings committee is set up — and the different ways it can run.</p>
+    <div style="margin-top:34px; font-size:13px; color:#ddd6fe; letter-spacing:1px;">WISHI · Digital Committee &amp; Savings-Group Management</div>
+  </div>
+</div>
+
+<!-- ============ SLIDE 2 — 3 STEPS OVERVIEW ============ -->
+<div class="slide">
+  <div class="kicker">How it works</div>
+  <h1 class="title">Creating a WISHI takes just 3 steps</h1>
+  <p class="sub">The organiser fills a short 3-step form. Most settings can still be edited later.</p>
+
+  <div class="row" style="margin-top:30px; align-items:stretch;">
+    <div class="stepcard">
+      <div class="n">1</div>
+      <div class="ic lg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8" r="3"/><path d="M3 20c0-3 2.5-5.5 5.5-5.5S14 17 14 20"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15.5 14.3c2.6.2 4.5 2.4 4.5 5"/></svg>
+      </div>
+      <h3>Basics</h3>
+      <p>Name the WISHI, set how many members it has, and the amount each one pays per cycle.</p>
+    </div>
+    <div class="stepcard">
+      <div class="n">2</div>
+      <div class="ic lg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/></svg>
+      </div>
+      <h3>Schedule</h3>
+      <p>Choose the start date, the daily opening time, and how often a new cycle runs.</p>
+    </div>
+    <div class="stepcard">
+      <div class="n">3</div>
+      <div class="ic lg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <h3>Rules</h3>
+      <p>Decide how winners are picked each cycle and who is allowed to join the group.</p>
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>2</span></div>
+</div>
+
+<!-- ============ SLIDE 3 — STEP 1 BASICS ============ -->
+<div class="slide">
+  <div class="kicker">Step 1 · Basics</div>
+  <h1 class="title">Who's in it, and how much?</h1>
+
+  <div class="row" style="margin-top:18px;">
+    <div class="col">
+      <div class="item">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v13"/><path d="M9 8h6M9 12h6"/></svg></div>
+        <div class="body"><b>WISHI name</b><span>What the group is called — members see it everywhere.</span></div>
+      </div>
+      <div class="item">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8" r="3"/><path d="M3 20c0-3 2.5-5.5 5.5-5.5S14 17 14 20"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15.5 14.3c2.6.2 4.5 2.4 4.5 5"/></svg></div>
+        <div class="body"><b>Total members (2–100)</b><span>The organiser automatically holds seat #1 and invites the rest.</span></div>
+      </div>
+      <div class="item">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor" stroke="none" font-family="Segoe UI,Arial">&#8377;</text></svg></div>
+        <div class="body"><b>Contribution per cycle</b><span>The fixed amount every member pays in each cycle.</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="example">
+        <div class="lbl">Pool per cycle (calculated for you)</div>
+        <div class="big">10 members &times; &#8377;5,000 = &#8377;50,000</div>
+        <div class="note">The WISHI then runs for as many cycles as there are members — so <b>everyone receives the pool once</b>. Here: 10 cycles. Cycle&nbsp;#1's pool is the organiser's payout, and they still contribute in every cycle like everyone else.</div>
+      </div>
+      <ul class="ticks">
+        <li>Bigger group or higher contribution → bigger pool each cycle.</li>
+        <li>The system does all the maths automatically.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>3</span></div>
+</div>
+
+<!-- ============ SLIDE 4 — STEP 2 SCHEDULE ============ -->
+<div class="slide">
+  <div class="kicker">Step 2 · Schedule</div>
+  <h1 class="title">When does it open, and how often?</h1>
+
+  <div class="row" style="margin-top:18px;">
+    <div class="col">
+      <div class="item">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/><circle cx="12" cy="14.5" r="1.4" fill="currentColor" stroke="none"/></svg></div>
+        <div class="body"><b>Start date</b><span>The earliest day the WISHI can open — once all the seats are filled.</span></div>
+      </div>
+      <div class="item">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.5 2"/></svg></div>
+        <div class="body"><b>Daily opening time</b><span>The time each new cycle (and any bidding) opens every day.</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div class="hd">
+          <div class="ic sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></div>
+          <h3>Cycle frequency</h3>
+        </div>
+        <p>How often a new cycle begins. Pick whatever suits the group:</p>
+        <div class="chips">
+          <span class="chip">Daily</span>
+          <span class="chip">Weekly</span>
+          <span class="chip">Monthly · most common</span>
+          <span class="chip">Quarterly</span>
+          <span class="chip">Yearly</span>
+          <span class="chip muted">Custom · every N days</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>4</span></div>
+</div>
+
+<!-- ============ SLIDE 5 — STEP 3 RULES ============ -->
+<div class="slide">
+  <div class="kicker">Step 3 · Rules</div>
+  <h1 class="title">How winners are picked &amp; who can join</h1>
+
+  <div class="row" style="margin-top:16px;">
+    <div class="col">
+      <div class="card" style="margin-bottom:14px;">
+        <div class="hd">
+          <div class="ic sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8h14M5 8l-2.5 4h5zM19 8l-2.5 4h5zM9 20h6"/></svg></div>
+          <h3>Winner selection style</h3>
+        </div>
+        <p><b>Random</b> or <b>Hybrid</b> — the two WISHI types, explained on the next slide.</p>
+      </div>
+      <div class="card">
+        <div class="hd">
+          <div class="ic sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.2v2.4M12 18.4v2.4M3.2 12h2.4M18.4 12h2.4M6 6l1.7 1.7M16.3 16.3 18 18M18 6l-1.7 1.7M7.7 16.3 6 18"/></svg></div>
+          <h3>Who picks the winner?</h3>
+        </div>
+        <p><b>Automatic</b> — the system decides (a fair draw, or the lowest bid). &nbsp; <b>Manual</b> — the organiser chooses an eligible member, and the reason is recorded.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card" style="height:100%;">
+        <div class="hd">
+          <div class="ic sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3>Join rules</h3>
+        </div>
+        <ul class="ticks">
+          <li><b>Require approval</b> — join requests wait in the organiser's queue for an OK. Recommended.</li>
+          <li><b>Auto-join link</b> — anyone with the private link joins instantly, skipping approval.</li>
+        </ul>
+        <div class="example" style="background:var(--greenlt); border-color:#a7f3d0;">
+          <div class="lbl" style="color:var(--green);">Then…</div>
+          <div class="note" style="margin-top:2px;">Hit <b>Create</b> — the WISHI is ready. Invite members and the first cycle begins once all seats are filled.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>5</span></div>
+</div>
+
+<!-- ============ SLIDE 6 — TYPES OF WISHI ============ -->
+<div class="slide">
+  <div class="kicker">The two types</div>
+  <h1 class="title">Types of WISHI<small>Chosen at creation — it sets how each cycle's winner is decided.</small></h1>
+
+  <div class="row" style="margin-top:24px; align-items:stretch;">
+    <div class="card col" style="border-color:var(--brandbd);">
+      <div class="hd">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg></div>
+        <div><span class="tag r">Type 1</span><h3 style="margin-top:6px;">Random WISHI</h3></div>
+      </div>
+      <p>Every cycle's winner is chosen by a <b>fair, verifiable random draw</b>. The simplest and most popular style — no bidding involved.</p>
+      <ul class="ticks">
+        <li>Everyone has an equal chance each cycle, until it's their turn.</li>
+        <li>The draw is recorded, so the result can't be disputed.</li>
+        <li>Best for friends &amp; family groups who just want it fair.</li>
+      </ul>
+    </div>
+
+    <div class="card col" style="border-color:var(--amberbd);">
+      <div class="hd">
+        <div class="ic md amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8h14M5 8l-2.5 4h5zM19 8l-2.5 4h5zM9 20h6"/></svg></div>
+        <div><span class="tag t">Type 2</span><h3 style="margin-top:6px;">Hybrid WISHI</h3></div>
+      </div>
+      <p>A <b>custom mix of Random cycles and Tender (bidding) cycles</b>. The organiser sets the pattern and it repeats across the WISHI.</p>
+      <ul class="ticks">
+        <li>Example pattern: <b>Random → Random → Tender</b>, then repeat.</li>
+        <li>Some cycles are a lucky draw; others are open to bidding.</li>
+        <li>Best when the group wants flexibility, like a traditional chit fund.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>6</span></div>
+</div>
+
+<!-- ============ SLIDE 7 — CYCLE MODES / TENDER ============ -->
+<div class="slide">
+  <div class="kicker">Inside a cycle</div>
+  <h1 class="title">Two ways a cycle can run</h1>
+
+  <div class="row" style="margin-top:22px; align-items:stretch;">
+    <div class="card col">
+      <div class="hd">
+        <div class="ic md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg></div>
+        <h3>Random cycle</h3>
+      </div>
+      <p>The winner is drawn by luck from the members who haven't won yet. Quick, simple, and completely fair.</p>
+    </div>
+
+    <div class="card col" style="border-color:var(--amberbd);">
+      <div class="hd">
+        <div class="ic md amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h9"/><path d="M5 18h5l.8 3H4.2z"/><path d="M9.5 13l5-5"/><path d="M11.5 5.2l5.3 5.3 2-2-5.3-5.3z"/></svg></div>
+        <h3>Tender (Bidding) cycle</h3>
+      </div>
+      <p>Members <b>bid</b> for an early turn. Whoever is willing to take the least wins the cycle — and the amount they give up (the “discount”) is <b>shared back with the whole group</b>. This is the classic chit-fund auction.</p>
+    </div>
+  </div>
+
+  <div class="example" style="margin-top:20px;">
+    <div class="lbl">Who makes the final call?</div>
+    <div class="note" style="margin-top:4px; font-size:13px;">
+      <b>Automatic</b> — the system picks the winner (the random draw, or the lowest bid). &nbsp;•&nbsp;
+      <b>Manual</b> — the organiser selects an eligible member themselves, and the reason is logged for transparency.
+    </div>
+  </div>
+
+  <div class="foot"><b>WISHI</b><span>7</span></div>
+</div>
+
+<!-- ============ SLIDE 8 — RECAP ============ -->
+<div class="slide" style="padding:0;">
+  <div style="height:100%; background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%); color:#fff; padding:26mm 24mm; display:flex; flex-direction:column; justify-content:center;">
+    <div class="kicker" style="color:#ddd6fe;">In short</div>
+    <h1 style="color:#fff; font-size:36px; line-height:1.15;">Set up in 3 steps. Runs in 2 styles.</h1>
+
+    <div style="display:flex; gap:18px; margin-top:30px;">
+      <div style="flex:1; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:20px;">
+        <div style="font-size:13px; letter-spacing:2px; text-transform:uppercase; color:#ddd6fe; font-weight:700;">Created in</div>
+        <div style="font-size:21px; font-weight:700; margin-top:8px;">1 · Basics</div>
+        <div style="font-size:21px; font-weight:700;">2 · Schedule</div>
+        <div style="font-size:21px; font-weight:700;">3 · Rules</div>
+      </div>
+      <div style="flex:1; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:20px;">
+        <div style="font-size:13px; letter-spacing:2px; text-transform:uppercase; color:#ddd6fe; font-weight:700;">Runs as</div>
+        <div style="font-size:21px; font-weight:700; margin-top:8px;">Random — fair draw</div>
+        <div style="font-size:21px; font-weight:700;">Hybrid — draw + bidding</div>
+        <div style="font-size:13px; color:#ede9fe; margin-top:10px;">…with automatic or manual winner selection.</div>
+      </div>
+    </div>
+
+    <p style="font-size:16px; color:#ede9fe; margin-top:28px;">Fair &nbsp;·&nbsp; Transparent &nbsp;·&nbsp; Flexible — a committee everyone can trust.</p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WISHI — Overview</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #1f2937;
+    font-size: 13.5px;
+    line-height: 1.6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  h1, h2, h3 { color: #0f172a; line-height: 1.25; }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: #fff;
+    border-radius: 18px;
+    padding: 54px 44px;
+    margin-bottom: 34px;
+  }
+  .cover .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .cover h1 { color: #fff; font-size: 40px; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .cover p { font-size: 16px; color: #ede9fe; max-width: 90%; }
+  .cover .meta { margin-top: 26px; font-size: 12.5px; color: #ddd6fe; }
+
+  /* ---------- Sections ---------- */
+  section { margin-bottom: 26px; }
+  h2 {
+    font-size: 19px;
+    border-left: 5px solid #7c3aed;
+    padding-left: 12px;
+    margin-bottom: 12px;
+  }
+  p.lead { margin-bottom: 10px; }
+
+  .callout {
+    background: #f5f3ff;
+    border: 1px solid #e9d5ff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .callout strong { color: #6d28d9; }
+
+  /* ---------- What-is two col ---------- */
+  ul.clean { list-style: none; }
+  ul.clean li { padding: 4px 0 4px 24px; position: relative; }
+  ul.clean li::before {
+    content: "";
+    position: absolute; left: 4px; top: 11px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #7c3aed;
+  }
+
+  /* ---------- Steps ---------- */
+  .steps { counter-reset: step; }
+  .step {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 10px 0; border-bottom: 1px dashed #e5e7eb;
+  }
+  .step:last-child { border-bottom: none; }
+  .step .num {
+    counter-increment: step;
+    flex: 0 0 34px; height: 34px;
+    background: #4f46e5; color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px;
+  }
+  .step .num::before { content: counter(step); }
+  .step .txt b { display: block; color: #111827; margin-bottom: 1px; }
+  .step .txt span { color: #4b5563; }
+
+  /* ---------- Feature cards ---------- */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: #fff;
+    break-inside: avoid;
+  }
+  .card h3 { font-size: 14.5px; margin-bottom: 4px; color: #5b21b6; }
+  .card p { font-size: 12.5px; color: #4b5563; }
+
+  .benefit {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 7px 0;
+  }
+  .benefit .tick {
+    flex: 0 0 20px; height: 20px; border-radius: 50%;
+    background: #10b981; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .benefit .tick::before { content: "\2713"; }
+  .benefit b { color: #111827; }
+
+  .avoid-break { break-inside: avoid; }
+  footer {
+    margin-top: 30px; padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px; color: #9ca3af; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <div class="cover">
+    <div class="badge">Product Overview</div>
+    <h1>WISHI</h1>
+    <p>A simple online platform to run group savings committees — clearly, fairly, and without the paperwork.</p>
+    <div class="meta">Digital Committee &amp; Savings-Group Management</div>
+  </div>
+
+  <section>
+    <h2>What is WISHI?</h2>
+    <p class="lead">WISHI is an easy-to-use platform for running <strong>group savings committees</strong> — also commonly known as a "BC", a "chit fund", or a "savings circle".</p>
+    <p class="lead">A committee is a group of trusted people who each put in a fixed amount of money on a regular schedule (for example, every month). In each round, all the collected money is given to one member. This continues, round after round, until every member has received the pool once.</p>
+    <div class="callout">
+      <strong>In one line:</strong> WISHI takes the whole committee — the money, the members, the turns, and the records — and keeps it organised online, so everyone can trust it.
+    </div>
+  </section>
+
+  <section class="avoid-break">
+    <h2>The problem it solves</h2>
+    <p class="lead">Running a committee by hand is stressful and easy to get wrong:</p>
+    <ul class="clean">
+      <li>Hard to keep track of who has paid and who is still pending.</li>
+      <li>Arguments over whose turn it is to receive the money.</li>
+      <li>No clear, lasting record of past payments and payouts.</li>
+      <li>Trust issues when cash is handled informally.</li>
+      <li>Endless manual reminders, totals, and calculations.</li>
+    </ul>
+    <p class="lead" style="margin-top:10px">WISHI removes all of this by moving the entire committee online — with clear records, fair selection, and a complete history that everyone can see.</p>
+  </section>
+
+  <section class="avoid-break">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><div class="num"></div><div class="txt"><b>Create a committee</b><span>Set the number of members, the contribution amount, and how often it runs.</span></div></div>
+      <div class="step"><div class="num"></div><div class="txt"><b>Add members</b><span>The organiser adds or invites people to join the group.</span></div></div>
+      <div class="step"><div class="num"></div><div class="txt"><b>Collect contributions</b><span>Each round, members pay their fixed amount — every payment is recorded.</span></div></div>
+      <div class="step"><div class="num"></div><div class="txt"><b>Pick the winner</b><span>One member is chosen to receive the pool — by a fair draw or by bidding.</span></div></div>
+      <div class="step"><div class="num"></div><div class="txt"><b>Pay out</b><span>The chosen member receives the collected money, recorded in the system.</span></div></div>
+      <div class="step"><div class="num"></div><div class="txt"><b>Repeat</b><span>The rounds continue until every member has had their turn.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Key features</h2>
+    <div class="grid">
+      <div class="card"><h3>Easy committee setup</h3><p>Create a committee in minutes — choose the size, the amount, the schedule, and the rules that suit your group.</p></div>
+      <div class="card"><h3>Member management</h3><p>Add, invite, approve, or remove members. Only the organiser can add people, so the group stays trusted.</p></div>
+      <div class="card"><h3>Fair random draw</h3><p>Pick each round's winner with a transparent lottery that is recorded — so no one can dispute the result.</p></div>
+      <div class="card"><h3>Bidding option</h3><p>Members can bid for an earlier turn, and the amount saved is shared fairly with the whole group.</p></div>
+      <div class="card"><h3>Payment tracking</h3><p>See at a glance who has paid and who is still pending in every round — no more guesswork.</p></div>
+      <div class="card"><h3>Personal payment history</h3><p>Every member can view their own complete payment timeline across all rounds.</p></div>
+      <div class="card"><h3>Payouts &amp; records</h3><p>Record money given to winners, including partial payouts and organiser top-ups when needed.</p></div>
+      <div class="card"><h3>Member trust score</h3><p>Each member builds a credit/trust score based on paying on time — so the organiser knows who is reliable.</p></div>
+      <div class="card"><h3>Dashboards</h3><p>A clear overview for members, plus a separate control panel for the organiser to manage everything.</p></div>
+      <div class="card"><h3>Notifications</h3><p>Members are alerted about important actions, so nobody misses a payment or an update.</p></div>
+      <div class="card"><h3>Full activity history</h3><p>Every action is logged with the date and the person — keeping the whole committee transparent and accountable.</p></div>
+      <div class="card"><h3>Built-in security</h3><p>Accounts lock after repeated wrong passwords, and sensitive actions are protected from misuse.</p></div>
+    </div>
+  </section>
+
+  <section class="avoid-break">
+    <h2>Who is it for?</h2>
+    <ul class="clean">
+      <li>Committee / BC organisers who manage savings groups.</li>
+      <li>Friends, families, colleagues, or communities who pool money together.</li>
+      <li>Anyone who wants a transparent, paperless, dispute-free way to run a committee.</li>
+    </ul>
+  </section>
+
+  <section class="avoid-break">
+    <h2>Why it's useful</h2>
+    <div class="benefit"><div class="tick"></div><div><b>Transparency</b> — everyone sees the same records, so there is nothing to hide.</div></div>
+    <div class="benefit"><div class="tick"></div><div><b>No disputes</b> — winners are chosen fairly and every result is recorded.</div></div>
+    <div class="benefit"><div class="tick"></div><div><b>Saves time</b> — no manual registers, reminders, or calculations.</div></div>
+    <div class="benefit"><div class="tick"></div><div><b>Builds trust</b> — trust scores and a full history keep the group honest.</div></div>
+    <div class="benefit"><div class="tick"></div><div><b>Use it anywhere</b> — works in any web browser, on a phone or a computer.</div></div>
+  </section>
+
+  <footer>WISHI — Digital Committee &amp; Savings-Group Management &nbsp;·&nbsp; Product Overview</footer>
+
+</body>
+</html>
