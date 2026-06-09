@@ -75,11 +75,32 @@ class DeployController extends Controller
         }
 
         $log = storage_path('logs/laravel.log');
-        $out[] = "\n--- last log lines ({$log}) ---";
+        $out[] = "\n--- last error in log ({$log}) ---";
         if (is_file($log)) {
-            $out[] = substr((string) file_get_contents($log), -6000);
+            $lines = preg_split('/\r?\n/', (string) file_get_contents($log));
+            $lastErr = null;
+            foreach ($lines as $i => $l) {
+                if (strpos($l, '.ERROR:') !== false) {
+                    $lastErr = $i;
+                }
+            }
+            if ($lastErr !== null) {
+                // Header line carries the exception class + message + origin
+                // file:line; the next frames show where it was thrown.
+                $out[] = implode("\n", array_slice($lines, $lastErr, 30));
+            } else {
+                $out[] = substr(implode("\n", $lines), -6000);
+            }
         } else {
             $out[] = '(no laravel.log yet)';
+        }
+
+        // Writable storage dirs (FTP deploy excludes these, so they may be
+        // missing on the server — a common cause of session/view 500s).
+        $out[] = "\n--- storage dirs ---";
+        foreach (['framework/sessions', 'framework/views', 'framework/cache/data', 'logs'] as $d) {
+            $p = storage_path($d);
+            $out[] = "{$d}: " . (is_dir($p) ? (is_writable($p) ? 'ok (writable)' : 'EXISTS but NOT writable') : 'MISSING');
         }
 
         return $this->text(implode("\n", $out));
